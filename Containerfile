@@ -45,3 +45,5 @@ LABEL org.opencontainers.image.source="https://github.com/duyhenryer/bootc-testb
 
 # --- Validate image (catches misconfigurations) ---
 RUN bootc container lint
+
+
