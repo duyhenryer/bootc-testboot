@@ -1,0 +1,16 @@
+[Unit]
+Description=Hello World HTTP Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=hello
+LogsDirectory=hello
+ExecStart=/usr/bin/hello
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+# bootc-image-builder customizations
+# Docs: https://github.com/osbuild/bootc-image-builder#-build-config
+
+[[customizations.user]]
+name = "devops"
+# Replace with your actual SSH public key
+key = "ssh-rsa AAAA... devops@company.com"
+groups = ["wheel"]
+
+[[customizations.filesystem]]
+mountpoint = "/"
+minsize = "10 GiB"
+
+[[customizations.filesystem]]
+mountpoint = "/var/data"
+minsize = "50 GiB"
+
+[customizations.kernel]
+append = "console=tty0 console=ttyS0,115200n8"

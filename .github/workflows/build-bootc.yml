@@ -1,0 +1,72 @@
+name: Build bootc image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Containerfile"
+      - "apps/**"
+      - "configs/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Containerfile"
+      - "apps/**"
+      - "configs/**"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  test:
+    name: Go tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run tests
+        run: |
+          for d in apps/*/; do
+            echo "==> Testing $d"
+            (cd "$d" && go test -v ./...)
+          done
+
+  build:
+    name: Build & push bootc image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Free disk space
+        run: rm -rf /opt/hostedtoolcache
+
+      - name: Set version
+        id: version
+        run: echo "version=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build apps + image
+        run: make build VERSION=${{ steps.version.outputs.version }}
+
+      - name: Push image
+        run: |
+          podman push ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+          podman push ${{ env.IMAGE }}:latest

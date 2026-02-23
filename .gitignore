@@ -1,0 +1,17 @@
+output/
+*.ami
+
+# Go
+apps/*/hello
+apps/*/api
+apps/*/worker
+
+# AWS
+aws.secrets
+.aws/
+
+# OS
+.DS_Store
+*.swp
+*.swo
+*~

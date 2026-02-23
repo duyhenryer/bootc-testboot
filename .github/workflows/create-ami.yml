@@ -1,0 +1,53 @@
+name: Create AMI
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "bootc image tag to build AMI from"
+        required: true
+        type: string
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_BUCKET: ${{ vars.AWS_BUCKET }}
+
+jobs:
+  create-ami:
+    name: Create AMI via bootc-image-builder
+    runs-on: self-hosted
+    permissions:
+      id-token: write
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to GHCR (for bootc-image-builder to pull the image)
+        run: echo "${{ github.token }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Create AMI
+        env:
+          VERSION: ${{ inputs.image_tag }}
+          AMI_NAME: bootc-poc-${{ inputs.image_tag }}
+        run: |
+          sudo podman run \
+            --rm -it --privileged \
+            --pull=newer \
+            --security-opt label=type:unconfined_t \
+            -v ./config.toml:/config.toml:ro \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
+            -v "${HOME}/.aws:/root/.aws:ro" \
+            quay.io/centos-bootc/bootc-image-builder:latest \
+            --type ami \
+            --aws-ami-name "${AMI_NAME}" \
+            --aws-bucket "${{ env.AWS_BUCKET }}" \
+            --aws-region "${{ env.AWS_REGION }}" \
+            "${{ env.IMAGE }}:${VERSION}"

@@ -1,0 +1,5 @@
+{
+  "credHelpers": {
+    "123456789.dkr.ecr.ap-southeast-1.amazonaws.com": "ecr-login"
+  }
+}
