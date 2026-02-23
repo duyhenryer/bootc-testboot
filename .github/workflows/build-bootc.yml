@@ -49,12 +49,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Free disk space
+        run: rm -rf /opt/hostedtoolcache
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-
-      - name: Free disk space
-        run: rm -rf /opt/hostedtoolcache
 
       - name: Set version
         id: version
