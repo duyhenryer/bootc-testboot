@@ -1,0 +1,72 @@
+name: Create VMDK / OVA
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "bootc image tag to build VMDK/OVA from"
+        required: true
+        type: string
+      num_cpus:
+        description: "Number of virtual CPUs"
+        required: false
+        default: "2"
+        type: string
+      memory_mb:
+        description: "Memory in MB"
+        required: false
+        default: "4096"
+        type: string
+      disk_capacity:
+        description: "Disk capacity in GiB"
+        required: false
+        default: "60"
+        type: string
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  create-ova:
+    name: Create VMDK + OVA via bootc-image-builder
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GHCR (for bootc-image-builder to pull the image)
+        run: echo "${{ github.token }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Create VMDK
+        env:
+          VERSION: ${{ inputs.image_tag }}
+        run: |
+          mkdir -p output
+          sudo podman run \
+            --rm --privileged \
+            --pull=newer \
+            --security-opt label=type:unconfined_t \
+            -v ./configs/builder/config.toml:/config.toml:ro \
+            -v ./output:/output \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
+            quay.io/centos-bootc/bootc-image-builder:latest \
+            --type vmdk \
+            --config /config.toml \
+            "${{ env.IMAGE }}:${VERSION}"
+
+      - name: Package OVA
+        env:
+          VERSION: ${{ inputs.image_tag }}
+          NUM_CPUS: ${{ inputs.num_cpus }}
+          MEMORY_MB: ${{ inputs.memory_mb }}
+          DISK_CAPACITY: ${{ inputs.disk_capacity }}
+        run: scripts/create-ova.sh
+
+      - name: Upload OVA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootc-ova-${{ inputs.image_tag }}
+          path: output/ova/*.ova
+          retention-days: 30

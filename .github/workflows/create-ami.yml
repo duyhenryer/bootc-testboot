@@ -39,10 +39,10 @@ jobs:
           AMI_NAME: bootc-poc-${{ inputs.image_tag }}
         run: |
           sudo podman run \
-            --rm -it --privileged \
+            --rm --privileged \
             --pull=newer \
             --security-opt label=type:unconfined_t \
-            -v ./config.toml:/config.toml:ro \
+            -v ./configs/builder/config.toml:/config.toml:ro \
             -v /var/lib/containers/storage:/var/lib/containers/storage \
             -v "${HOME}/.aws:/root/.aws:ro" \
             quay.io/centos-bootc/bootc-image-builder:latest \

@@ -194,7 +194,7 @@ With composefs, `/opt` is **read-only** like `/usr`. Some third-party software (
 ### Solution 1: Symlink to /var (Recommended)
 
 ```dockerfile
-RUN apt install examplepkg && \
+RUN dnf install -y examplepkg && \
     mv /opt/examplepkg/logs /var/log/examplepkg && \
     ln -sr /var/log/examplepkg /opt/examplepkg/logs
 ```
@@ -284,11 +284,6 @@ flowchart TB
     B_ETC --> D_ETC
     B_VAR --> D_VAR
     B_OPT --> D_OPT
-
-    style D_USR fill:#ffcdd2
-    style D_ETC fill:#c8e6c9
-    style D_VAR fill:#c8e6c9
-    style D_OPT fill:#ffcdd2
 ```
 
 ---
@@ -298,8 +293,8 @@ flowchart TB
 ### Example 1: App with /var State
 
 ```dockerfile
-# Binary in /usr (read-only when deployed)
-COPY --from=builder /out/hello /usr/bin/hello
+# Pre-built binary in /usr (read-only when deployed)
+COPY output/bin/ /usr/bin/
 
 # systemd unit with StateDirectory (auto-creates /var/lib/hello)
 COPY apps/hello/hello.service /usr/lib/systemd/system/hello.service
@@ -328,7 +323,7 @@ COPY configs/sshd-hardening.conf /etc/ssh/sshd_config.d/99-hardening.conf
 ### Example 4: /opt Package Needing Writable Dir
 
 ```dockerfile
-RUN apt install examplepkg && \
+RUN dnf install -y examplepkg && \
     mv /opt/examplepkg/logs /var/log/examplepkg && \
     ln -sr /var/log/examplepkg /opt/examplepkg/logs
 ```

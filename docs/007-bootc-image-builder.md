@@ -115,7 +115,7 @@ sudo podman run \
   --privileged \
   --pull=newer \
   --security-opt label=type:unconfined_t \
-  -v ./config.toml:/config.toml:ro \
+  -v ./configs/builder/config.toml:/config.toml:ro \
   -v ./output:/output \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   quay.io/centos-bootc/bootc-image-builder:latest \
@@ -222,7 +222,7 @@ sudo podman run \
   --privileged \
   --pull=newer \
   --security-opt label=type:unconfined_t \
-  -v ./config.toml:/config.toml:ro \
+  -v ./configs/builder/config.toml:/config.toml:ro \
   -v ./output:/output \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   quay.io/centos-bootc/bootc-image-builder:latest \
@@ -254,6 +254,78 @@ sudo podman run \
 ```
 
 Replace `YOUR_BOOTC_IMPORT_BUCKET` with an S3 bucket that exists and has the vmimport role configured. To use your own built bootc image (e.g. from this repo's `Containerfile`), build it first with `podman build -t my-bootc:latest .` and replace the image reference.
+
+---
+
+## VMDK Build (VMware / vSphere)
+
+Use `--type vmdk` to create a VMDK disk image suitable for VMware vSphere, ESXi, or VirtualBox.
+
+```bash
+sudo podman run \
+  --rm \
+  -it \
+  --privileged \
+  --pull=newer \
+  --security-opt label=type:unconfined_t \
+  -v ./configs/builder/config.toml:/config.toml:ro \
+  -v ./output:/output \
+  -v /var/lib/containers/storage:/var/lib/containers/storage \
+  quay.io/centos-bootc/bootc-image-builder:latest \
+  --type vmdk \
+  --config /config.toml \
+  ghcr.io/duyhenryer/bootc-testboot:latest
+```
+
+Output: `output/vmdk/disk.vmdk`
+
+For our POC: `make vmdk` wraps this command.
+
+See also: [Red Hat: Creating VMDK images](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/using_image_mode_for_rhel_to_build_deploy_and_manage_operating_systems/creating-bootc-compatible-base-disk-images-with-bootc-image-builder_using-image-mode-for-rhel-to-build-deploy-and-manage-operating-systems#creating-vmdk-images-by-using-bootc-image-builder_creating-bootc-compatible-base-disk-images-with-bootc-image-builder)
+
+---
+
+## OVA Packaging (VMDK + OVF)
+
+bootc-image-builder does not produce OVA directly. An OVA is a tar archive containing:
+
+| File | Purpose |
+|------|---------|
+| `*.ovf` | OVF descriptor (XML defining VM specs: CPU, RAM, disk, network) |
+| `disk.vmdk` | The VMDK disk image |
+| `*.mf` | SHA256 manifest for integrity verification |
+
+### Creating an OVA
+
+1. Build the VMDK: `make vmdk`
+2. Package as OVA: `make ova`
+
+The `make ova` target runs `scripts/create-ova.sh`, which:
+- Takes the VMDK from `output/vmdk/disk.vmdk`
+- Fills in `templates/bootc-poc.ovf` with VM specs (CPU, memory, disk size)
+- Generates a SHA256 manifest
+- Packages everything as `output/ova/bootc-poc-<version>.ova`
+
+### Customizing VM Specs
+
+Override via environment variables:
+
+```bash
+NUM_CPUS=4 MEMORY_MB=8192 DISK_CAPACITY=100 make ova
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NUM_CPUS` | 2 | Virtual CPU count |
+| `MEMORY_MB` | 4096 | Memory in MB |
+| `DISK_CAPACITY` | 60 | Disk capacity in GiB |
+
+### Importing into vSphere
+
+1. In vSphere Client: **Hosts and Clusters** > right-click host > **Deploy OVF Template**
+2. Select the `.ova` file
+3. Follow the wizard (accept defaults or customize)
+4. Power on the VM
 
 ---
 
@@ -321,4 +393,6 @@ The bootc OCI image and bootc-image-builder image must support the target arch. 
 - [ ] For AMI: all of `--aws-ami-name`, `--aws-bucket`, `--aws-region`
 - [ ] Use `--env-file` for AWS secrets, never plain `--env`
 - [ ] Add vmimport role and S3 permissions for AMI
+- [ ] For VMDK: mount `./output:/output` for local output
+- [ ] For OVA: run `make ova` (builds VMDK first, then packages with OVF)
 - [ ] Filesystem: only `/`, `/boot`, and `/var/*` subdirs (no `/var` itself, no symlinks)
