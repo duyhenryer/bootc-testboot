@@ -16,7 +16,7 @@ env:
 jobs:
   create-ami:
     name: Create AMI via bootc-image-builder
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read

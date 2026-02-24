@@ -29,7 +29,7 @@ env:
 jobs:
   create-ova:
     name: Create VMDK + OVA via bootc-image-builder
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: read
