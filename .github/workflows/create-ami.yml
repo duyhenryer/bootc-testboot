@@ -52,6 +52,7 @@ jobs:
             -v "${HOME}/.aws:/root/.aws:ro" \
             quay.io/centos-bootc/bootc-image-builder:latest \
             --type ami \
+            --rootfs ext4 \
             --aws-ami-name "${AMI_NAME}" \
             --aws-bucket "${{ env.AWS_BUCKET }}" \
             --aws-region "${{ env.AWS_REGION }}" \

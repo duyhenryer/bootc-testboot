@@ -32,6 +32,7 @@ sudo podman run \
     -v /var/lib/containers/storage:/var/lib/containers/storage \
     quay.io/centos-bootc/bootc-image-builder:latest \
     --type vmdk \
+    --rootfs ext4 \
     --config /config.toml \
     "${IMAGE}:${VERSION}"
 

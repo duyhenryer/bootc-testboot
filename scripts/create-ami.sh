@@ -36,6 +36,7 @@ sudo podman run \
     --env AWS_PROFILE="${AWS_PROFILE:-default}" \
     quay.io/centos-bootc/bootc-image-builder:latest \
     --type ami \
+    --rootfs ext4 \
     --aws-ami-name "${AMI_NAME}" \
     --aws-bucket "${AWS_BUCKET}" \
     --aws-region "${AWS_REGION}" \
