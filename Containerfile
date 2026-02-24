@@ -12,7 +12,7 @@ RUN dnf --setopt=fedora-cisco-openh264.enabled=0 install -y \
         cloud-init \
         htop curl jq \
     && dnf clean all \
-    && rm -rf /var/cache/dnf /var/cache/libdnf5 /var/cache/ldconfig \
+    && rm -rf /var/cache/{dnf,libdnf5,ldconfig} \
               /var/log/dnf5.log /var/lib/dnf
 
 # --- Pre-built app binaries (from output/bin/) ---
