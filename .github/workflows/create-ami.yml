@@ -30,8 +30,13 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Login to GHCR (for bootc-image-builder to pull the image)
+      - name: Login to GHCR
         run: echo "${{ github.token }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Pull bootc image
+        env:
+          VERSION: ${{ inputs.image_tag }}
+        run: sudo podman pull "${{ env.IMAGE }}:${VERSION}"
 
       - name: Create AMI
         env:
