@@ -167,9 +167,6 @@ flowchart TB
     SKOPEO -.-> BOOTC
     OSTREE -.-> BOOTC
     OSTREE -.-> RPMOSTREE
-
-    style BOOTC fill:#e8f5e9
-    style RPMOSTREE fill:#fff3e0
 ```
 
 ---

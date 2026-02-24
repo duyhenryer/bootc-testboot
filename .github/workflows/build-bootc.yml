@@ -37,10 +37,9 @@ jobs:
           done
 
   build:
-    name: Build & push bootc image
+    name: Build & lint bootc image
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
@@ -60,13 +59,18 @@ jobs:
         id: version
         run: echo "version=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
 
-      - name: Login to GHCR
-        run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
-
       - name: Build apps + image
         run: make build VERSION=${{ steps.version.outputs.version }}
 
+      - name: Strict lint
+        run: make lint-strict VERSION=${{ steps.version.outputs.version }}
+
+      - name: Login to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
       - name: Push image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           podman push ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
           podman push ${{ env.IMAGE }}:latest

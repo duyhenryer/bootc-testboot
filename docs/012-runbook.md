@@ -208,6 +208,46 @@ Shows the exact container image reference and digest for the booted deployment.
 
 ---
 
+## 7. Build VMDK / OVA (for VMware)
+
+### Create VMDK
+
+```bash
+make vmdk
+# Output: output/vmdk/disk.vmdk
+```
+
+Requires `sudo` (bootc-image-builder runs `--privileged`). The bootc image must be available in local container storage (`make build` first) or in GHCR.
+
+### Create OVA from VMDK
+
+```bash
+make ova
+# Output: output/ova/bootc-poc-<version>.ova
+```
+
+`make ova` depends on `make vmdk` and runs it automatically if needed.
+
+### Customize VM specs
+
+```bash
+NUM_CPUS=4 MEMORY_MB=8192 DISK_CAPACITY=100 make ova
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NUM_CPUS` | 2 | Virtual CPUs |
+| `MEMORY_MB` | 4096 | Memory in MB |
+| `DISK_CAPACITY` | 60 | Disk in GiB |
+
+### Import into vSphere
+
+1. vSphere Client > **Hosts and Clusters** > right-click host > **Deploy OVF Template**
+2. Select the `.ova` file
+3. Follow wizard, power on
+
+---
+
 ## Quick Reference
 
 | Task | Command |
@@ -220,3 +260,7 @@ Shows the exact container image reference and digest for the booted deployment.
 | Check /etc drift | `sudo ostree admin config-diff` |
 | Update bootloader | `sudo bootupctl update` |
 | Health checks | `./scripts/verify-instance.sh` |
+| Create AMI | `make ami` |
+| Create VMDK | `make vmdk` |
+| Create OVA | `make ova` |
+| Custom OVA specs | `NUM_CPUS=4 MEMORY_MB=8192 make ova` |

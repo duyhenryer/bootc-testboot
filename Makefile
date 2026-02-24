@@ -1,4 +1,4 @@
-.PHONY: apps build test lint ami \
+.PHONY: apps build test lint lint-strict ami vmdk ova \
        os-upgrade os-apply os-rollback os-status verify \
        help clean
 
@@ -45,12 +45,21 @@ build: apps ## Build bootc image (pre-builds apps, then assembles OS)
 lint: ## Run bootc container lint on the built image
 	$(PODMAN) run --rm $(IMAGE):$(VERSION) bootc container lint
 
+lint-strict: ## Run bootc container lint --fatal-warnings (used in CI)
+	$(PODMAN) run --rm $(IMAGE):$(VERSION) bootc container lint --fatal-warnings
+
 # ---------------------------------------------------------------------------
-# AMI
+# Disk Images (bootc-image-builder)
 # ---------------------------------------------------------------------------
 
 ami: ## Create AMI via bootc-image-builder (auto-upload to AWS)
 	scripts/create-ami.sh
+
+vmdk: ## Create VMDK disk image via bootc-image-builder
+	scripts/create-vmdk.sh
+
+ova: vmdk ## Create OVA from VMDK (VMDK + OVF -> .ova tar)
+	scripts/create-ova.sh
 
 # ---------------------------------------------------------------------------
 # Operations (run ON the EC2 instance)

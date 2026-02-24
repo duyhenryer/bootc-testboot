@@ -24,10 +24,10 @@ echo "    Region: ${AWS_REGION}"
 echo "    Bucket: ${AWS_BUCKET}"
 
 sudo podman run \
-    --rm -it --privileged \
+    --rm --privileged \
     --pull=newer \
     --security-opt label=type:unconfined_t \
-    -v ./config.toml:/config.toml:ro \
+    -v ./configs/builder/config.toml:/config.toml:ro \
     -v /var/lib/containers/storage:/var/lib/containers/storage \
     -v "${HOME}/.aws:/root/.aws:ro" \
     --env AWS_PROFILE="${AWS_PROFILE:-default}" \

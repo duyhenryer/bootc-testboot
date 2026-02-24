@@ -45,12 +45,17 @@ bootc-testboot/
 │   └── containers-auth.json
 ├── scripts/
 │   ├── create-ami.sh
+│   ├── create-vmdk.sh
+│   ├── create-ova.sh
 │   ├── upgrade-os.sh
 │   ├── rollback-os.sh
 │   └── verify-instance.sh
+├── templates/
+│   └── bootc-poc.ovf            # OVF descriptor for OVA packaging
 ├── .github/workflows/
 │   ├── build-bootc.yml
-│   └── create-ami.yml
+│   ├── create-ami.yml
+│   └── create-ova.yml
 ├── Containerfile              # Single-stage: COPY pre-built binaries + configs
 ├── config.toml                # bootc-image-builder customizations
 └── Makefile
@@ -149,6 +154,49 @@ make ami
 ...
 ==> AMI bootc-poc-dev created. Check AWS Console for the new AMI.
 ```
+
+---
+
+## 6b. Create VMDK / OVA (for VMware vSphere)
+
+If targeting VMware instead of (or in addition to) AWS, create a VMDK disk image and package it as an OVA:
+
+```bash
+# Create VMDK via bootc-image-builder (requires sudo)
+make vmdk
+
+# Package VMDK into OVA (VMDK + OVF descriptor + manifest)
+make ova
+
+# Or run both in one step (ova depends on vmdk):
+make ova
+```
+
+Customize VM specs via environment variables:
+
+```bash
+NUM_CPUS=4 MEMORY_MB=8192 DISK_CAPACITY=100 make ova
+```
+
+**Expected output:**
+
+```
+==> Creating VMDK: bootc-poc-dev
+    Image: ghcr.io/duyhenryer/bootc-testboot:dev
+...
+==> VMDK created at output/vmdk/disk.vmdk
+==> Packaging OVA: bootc-poc-dev
+...
+==> OVA created at output/ova/bootc-poc-dev.ova
+    Import into vSphere: Hosts > Deploy OVF Template > output/ova/bootc-poc-dev.ova
+```
+
+**Import into vSphere:**
+
+1. In vSphere Client: **Hosts and Clusters** > right-click host > **Deploy OVF Template**
+2. Select the `.ova` file
+3. Follow the wizard (accept defaults or customize)
+4. Power on the VM
 
 ---
 
@@ -325,6 +373,8 @@ Launch a new instance from the updated AMI (or use `bootc upgrade` on existing i
 | Build          | `make build`                     |
 | Push (CI only) | Auto via GitHub Actions on merge to `main` |
 | Create AMI     | `make ami`                       |
+| Create VMDK    | `make vmdk`                      |
+| Create OVA     | `make ova`                       |
 | Verify         | `make verify` (on instance)      |
 | Upgrade download | `./scripts/upgrade-os.sh download` |
 | Upgrade apply  | `./scripts/upgrade-os.sh apply`   |

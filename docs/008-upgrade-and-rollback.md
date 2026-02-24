@@ -262,12 +262,6 @@ flowchart TD
     PROD -->|No - immediate apply OK| APPLY[bootc upgrade --apply]
     
     INTENT -->|Just check for updates| CHECK[bootc upgrade --check]
-    
-    style RB fill:#e8f5e9
-    style SWITCH fill:#e3f2fd
-    style DL fill:#fff3e0
-    style APPLY fill:#fce4ec
-    style CHECK fill:#f3e5f5
 ```
 
 ---

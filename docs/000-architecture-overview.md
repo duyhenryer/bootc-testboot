@@ -27,17 +27,17 @@ flowchart TB
     end
 
     subgraph ImageBuilder["bootc-image-builder"]
-        GHCR --> AMI["Disk Image (AMI)"]
+        GHCR --> AMI["AMI (AWS)"]
+        GHCR --> VMDK["VMDK / OVA (VMware)"]
     end
 
-    subgraph Runtime["Runtime (EC2)"]
-        AMI --> VM["Deployed System"]
-        VM --> PID1["systemd as pid1"]
-        VM --> ROOT["OSTree deployment root"]
+    subgraph Runtime["Runtime"]
+        AMI --> EC2["EC2 Instance"]
+        VMDK --> VSPHERE["vSphere VM"]
+        EC2 --> PID1["systemd as pid1"]
+        VSPHERE --> PID1
+        PID1 --> ROOT["OSTree deployment root"]
     end
-
-    style Containerfile fill:#e1f5fe
-    style VM fill:#c8e6c9
 ```
 
 ### Layers from One Containerfile
@@ -80,14 +80,14 @@ flowchart LR
     subgraph Bake["Bake"]
         GHCR --> BIB[bootc-image-builder]
         BIB --> AMI[AMI]
+        BIB --> VMDK[VMDK]
+        VMDK --> OVA[OVA]
     end
 
     subgraph Deploy["Deploy"]
         AMI --> EC2[("EC2 Instance")]
+        OVA --> VS[("vSphere VM")]
     end
-
-    style CF fill:#bbdefb
-    style AMI fill:#c8e6c9
 ```
 
 ### Decoupled Build
@@ -104,7 +104,8 @@ make apps                          make build
                                        │
                                        └─ podman push → ghcr.io/…
                                               │
-                                              └─ bootc-image-builder → AMI → EC2
+                                              ├─ bootc-image-builder --type ami  → AMI → EC2
+                                              └─ bootc-image-builder --type vmdk → VMDK → OVA → vSphere
 ```
 
 ---
@@ -133,9 +134,6 @@ flowchart TB
         ETCDIR
         VARDIR
     end
-
-    style ReadOnly fill:#ffebee
-    style Mutable fill:#e8f5e9
 ```
 
 | Path | Build-time | Runtime | Behavior |
@@ -223,7 +221,7 @@ flowchart TB
     end
 
     subgraph Production["Full Stack"]
-        N2[nginx (reverse proxy)]
+        N2["nginx (reverse proxy)"]
         R[redis]
         M[rabbitmq]
         A1[app-api]
@@ -231,7 +229,15 @@ flowchart TB
         A3[app-web]
     end
 
+    subgraph Targets["Deployment Targets"]
+        AMI[AWS AMI]
+        OVA[VMware OVA]
+        QCOW[QCOW2]
+        ISO[ISO]
+    end
+
     POC --> Production
+    Production --> Targets
 ```
 
 ### Scaling the POC
@@ -243,7 +249,15 @@ flowchart TB
 | **rabbitmq** | `RUN dnf install rabbitmq-server` + systemd unit |
 | **Many apps** | `apps/api/`, `apps/worker/`, `apps/web/`; same Containerfile pattern |
 
-Same pattern everywhere: **Containerfile + systemd units + tmpfiles.d** for `/var` dirs. One image, one source of truth, atomic upgrades.
+### Deployment Targets
+
+| Target | Command | Use Case |
+|--------|---------|----------|
+| **AWS AMI** | `make ami` | Cloud deployment on EC2 |
+| **VMware OVA** | `make ova` | On-premise customer delivery via vSphere |
+| **VMDK** | `make vmdk` | Direct VMware disk image |
+
+Same pattern everywhere: **Containerfile + systemd units + tmpfiles.d** for `/var` dirs. One image, one source of truth, atomic upgrades. Same OCI image produces AMI, OVA, or any other format via bootc-image-builder.
 
 ---
 

@@ -1,15 +1,16 @@
 # bootc-testboot
 
-POC for **bootc Image-Based OS** -- using OCI container images to build, deploy, and update bootable operating systems on AWS EC2.
+POC for **bootc Image-Based OS** -- using OCI container images to build, deploy, and update bootable operating systems on AWS EC2 and VMware vSphere (OVA).
 
 ## What is this?
 
 Instead of baking AMIs with Packer (15-30 min per change), we use a single **Containerfile** to define the entire OS: kernel, packages, configs, and application binaries. The same container tooling (podman, GHCR, CI/CD) you already use for app images now manages the OS itself.
 
 ```
-apps/ -> make apps -> output/bin/ -> Containerfile -> GHCR -> bootc-image-builder -> AMI -> EC2
+apps/ -> make apps -> output/bin/ -> Containerfile -> GHCR -> bootc-image-builder --type ami  -> AMI -> EC2
+                                                                                 --type vmdk -> VMDK -> OVA -> vSphere
                                                                                       |
-                                                                 bootc upgrade  <------+--- bootc rollback
+                                                                 bootc upgrade  <-----+---- bootc rollback
 ```
 
 ## Architecture
@@ -32,15 +33,19 @@ flowchart TB
         Lint --> GHCR["ghcr.io/.../bootc-testboot:tag"]
     end
 
-    subgraph amiPhase [AMI Creation]
-        GHCR --> BIB["make ami"]
-        BIB -->|"auto-upload"| AMI[AWS AMI]
+    subgraph diskImages [Disk Images]
+        GHCR --> BIB_AMI["make ami"]
+        GHCR --> BIB_OVA["make ova"]
+        BIB_AMI -->|"auto-upload"| AMI[AWS AMI]
+        BIB_OVA --> VMDK[VMDK] --> OVA[OVA]
     end
 
-    subgraph runPhase [Running EC2]
+    subgraph runPhase [Deployed Systems]
         AMI --> EC2[EC2 Instance]
+        OVA --> VS[vSphere VM]
         EC2 --> Nginx["nginx :80"]
         Nginx --> Hello["hello.service :8080"]
+        VS --> Nginx
     end
 ```
 
@@ -53,10 +58,13 @@ make test
 # Build apps to output/bin/, then build the bootc image
 make build
 
-# Create AMI (requires privileged EC2 builder + AWS credentials)
+# Create AMI (requires privileged builder + AWS credentials)
 make ami
 
-# After launching EC2 from the AMI:
+# Create VMDK + OVA for VMware (requires privileged builder)
+make ova
+
+# After launching EC2/vSphere VM:
 make verify          # health checks
 make os-status       # bootc status
 ```
@@ -80,12 +88,16 @@ configs/
   sshd-hardening.conf    Drop-in: no root login, no password
   containers-auth.json   Registry credential helper config
 scripts/
-  create-ami.sh          bootc-image-builder wrapper
+  create-ami.sh          bootc-image-builder -> AMI (auto-upload to AWS)
+  create-vmdk.sh         bootc-image-builder -> VMDK
+  create-ova.sh          VMDK + OVF -> OVA (for vSphere import)
   upgrade-os.sh          Production-safe upgrade (download/apply/check)
   rollback-os.sh         Rollback + reboot
   verify-instance.sh     Post-boot health checks
+templates/
+  bootc-poc.ovf          OVF descriptor template for OVA packaging
 Containerfile            Single-stage: COPY pre-built binaries + configs
-Makefile                 All operations: apps, build, test, push, ami, ops
+Makefile                 All operations: apps, build, test, ami, vmdk, ova, ops
 config.toml              bootc-image-builder customizations
 ```
 
@@ -115,12 +127,13 @@ Start with the architecture overview, then work through the numbered docs:
 | [004](docs/004-building-bootc-images.md) | Building bootc Images |
 | [005](docs/005-users-groups-ssh.md) | Users, Groups & SSH Keys |
 | [006](docs/006-secrets-management.md) | Secrets Management |
-| [007](docs/007-bootc-image-builder.md) | bootc-image-builder (AMI creation) |
+| [007](docs/007-bootc-image-builder.md) | bootc-image-builder (AMI, VMDK, OVA) |
 | [008](docs/008-upgrade-and-rollback.md) | Upgrade & Rollback |
 | [009](docs/009-registries-and-offline.md) | Registries & Offline Updates |
 | [010](docs/010-relationships.md) | Relationships with Other Projects |
 | [011](docs/011-poc-walkthrough.md) | POC Walkthrough (step-by-step) |
 | [012](docs/012-runbook.md) | Operations Runbook |
+| [013](docs/013-base-distro-comparison.md) | Base Distro Comparison (Fedora, CentOS, RHEL, Ubuntu, Debian) |
 
 ## Key Concepts
 
