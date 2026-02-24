@@ -23,6 +23,9 @@ echo "    Image:  ${IMAGE}:${VERSION}"
 echo "    Region: ${AWS_REGION}"
 echo "    Bucket: ${AWS_BUCKET}"
 
+echo "==> Pulling image: ${IMAGE}:${VERSION}"
+sudo podman pull "${IMAGE}:${VERSION}"
+
 sudo podman run \
     --rm --privileged \
     --pull=newer \

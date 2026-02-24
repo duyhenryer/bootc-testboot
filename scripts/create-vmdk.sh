@@ -20,6 +20,9 @@ echo "    Image: ${IMAGE}:${VERSION}"
 
 mkdir -p output
 
+echo "==> Pulling image: ${IMAGE}:${VERSION}"
+sudo podman pull "${IMAGE}:${VERSION}"
+
 sudo podman run \
     --rm --privileged \
     --pull=newer \
