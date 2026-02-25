@@ -4,7 +4,7 @@
 [[customizations.user]]
 name = "devops"
 # Replace with your actual SSH public key
-key = "ssh-rsa AAAA... devops@company.com"
+key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDiJ7hHdPtK//86y6wFExtQ7cxC7VL88hoLKHuMCnckj duyne"
 groups = ["wheel"]
 
 [[customizations.filesystem]]

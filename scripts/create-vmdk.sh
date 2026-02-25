@@ -12,7 +12,7 @@ set -euo pipefail
 
 REGISTRY="${REGISTRY:-ghcr.io/duyhenryer}"
 IMAGE="${IMAGE:-${REGISTRY}/bootc-testboot}"
-VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
+VERSION="${VERSION:-latest}"
 VMDK_NAME="${VMDK_NAME:-bootc-poc-${VERSION}}"
 
 echo "==> Creating VMDK: ${VMDK_NAME}"

@@ -329,6 +329,80 @@ NUM_CPUS=4 MEMORY_MB=8192 DISK_CAPACITY=100 make ova
 
 ---
 
+## GCE Build (Google Compute Engine)
+
+Use `--type gce` to create a disk image for Google Compute Engine. The builder outputs `image.tar.gz` (disk.raw already packaged) — ready to upload to GCS.
+
+### How It Works
+
+```
+bootc-image-builder --type gce → output/gce/image.tar.gz
+                                     ↓
+                       gsutil cp → gs://BUCKET/image.tar.gz
+                                     ↓
+              gcloud compute images create --source-uri → GCE custom image
+```
+
+### Prerequisites
+
+| Requirement | Notes |
+|-------------|-------|
+| **gcloud CLI** | Installed and authenticated (`gcloud auth login`) |
+| **gsutil** | Included with gcloud SDK |
+| **GCS bucket** | Must already exist in your project |
+| **IAM permissions** | `roles/compute.imageAdmin` + `roles/storage.objectAdmin` |
+| **podman** | Required, running as root (sudo) |
+
+### Build Command (Local)
+
+```bash
+# Step 1: Build GCE image (outputs image.tar.gz directly)
+sudo podman run \
+  --rm --privileged \
+  --pull=newer \
+  --security-opt label=type:unconfined_t \
+  -v ./configs/builder/config.toml:/config.toml:ro \
+  -v ./output:/output \
+  -v /var/lib/containers/storage:/var/lib/containers/storage \
+  quay.io/centos-bootc/bootc-image-builder:latest \
+  --type gce \
+  --rootfs ext4 \
+  --config /config.toml \
+  ghcr.io/duyhenryer/bootc-testboot:latest
+
+# Step 2: Upload to GCS
+gsutil cp output/gce/image.tar.gz gs://YOUR_BUCKET/bootc-poc.tar.gz
+
+# Step 3: Create GCE image
+gcloud compute images create bootc-poc-latest \
+  --project=YOUR_PROJECT \
+  --source-uri=gs://YOUR_BUCKET/bootc-poc.tar.gz \
+  --guest-os-features=UEFI_COMPATIBLE,VIRTIO_SCSI_MULTIQUEUE
+```
+
+For our POC: `make gce` wraps all three steps into `scripts/create-gce.sh`.
+
+### Environment Variables
+
+| Variable | Default | Required | Description |
+|----------|---------|----------|-------------|
+| `GCP_PROJECT` | — | **Yes** | GCP project ID |
+| `GCP_BUCKET` | — | **Yes** | GCS bucket for staging the raw disk |
+| `GCE_IMAGE_NAME` | `bootc-poc-<version>` | No | Name of the Compute Engine image |
+
+### Launching a VM from the Image
+
+```bash
+gcloud compute instances create bootc-test \
+  --project=YOUR_PROJECT \
+  --zone=asia-southeast1-a \
+  --machine-type=e2-medium \
+  --image=bootc-poc-latest \
+  --image-project=YOUR_PROJECT
+```
+
+---
+
 ## Running the QCOW2
 
 ```bash
@@ -395,4 +469,6 @@ The bootc OCI image and bootc-image-builder image must support the target arch. 
 - [ ] Add vmimport role and S3 permissions for AMI
 - [ ] For VMDK: mount `./output:/output` for local output
 - [ ] For OVA: run `make ova` (builds VMDK first, then packages with OVF)
+- [ ] For GCE: `--type gce` → tar.gz → `gsutil cp` → `gcloud compute images create`
+- [ ] For GCE: IAM `roles/compute.imageAdmin` + `roles/storage.objectAdmin`
 - [ ] Filesystem: only `/`, `/boot`, and `/var/*` subdirs (no `/var` itself, no symlinks)

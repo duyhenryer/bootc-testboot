@@ -49,11 +49,11 @@ PasswordAuthentication no
 
 ## configs/builder/ — Disk Image Builder Configs
 
-Used by `bootc-image-builder` when creating AMI, VMDK, or OVA disk images.
+Used by `bootc-image-builder` when creating AMI, GCE, VMDK, or OVA disk images.
 
 | File | Used By | Purpose |
 |------|---------|---------|
-| `config.toml` | `scripts/create-ami.sh`, `scripts/create-vmdk.sh` | bootc-image-builder customizations (users, filesystem, kernel) |
+| `config.toml` | `scripts/create-ami.sh`, `scripts/create-gce.sh`, `scripts/create-vmdk.sh` | bootc-image-builder customizations (users, filesystem, kernel) |
 | `bootc-poc.ovf` | `scripts/create-ova.sh` | OVF descriptor XML for OVA packaging. Defines VM hardware for vSphere import. |
 
 ### config.toml — Defaults

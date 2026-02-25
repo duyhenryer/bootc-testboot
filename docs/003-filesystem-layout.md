@@ -352,6 +352,37 @@ Optional: `enabled = verity` for fsverity integrity (see [bootc filesystem](http
 
 ---
 
+## Quick Summary
+
+### Lifecycle Table
+
+| Zone | During Build | At Runtime | On Upgrade | On Rollback |
+|------|-------------|-----------|------------|-------------|
+| `/usr` | Fully writable | **Read-only** (composefs) | Replaced entirely by new image | Swapped to previous image |
+| `/etc` | Fully writable | Writable | **3-way merge** (local changes retained) | Swapped to previous image |
+| `/var` | Fully writable | Writable | **Unchanged** (never overwritten) | **Unchanged** (never rolled back) |
+| `/opt` | Fully writable | **Read-only** (unless overlay) | Same as `/usr` | Same as `/usr` |
+
+### Mental Model
+
+Think of a bootc system like a **smartphone**:
+
+- **`/usr` = Firmware / ROM** — you can only change it via an OTA update (rebuild image + `bootc upgrade`)
+- **`/etc` = Settings** — you can customize them; when the firmware updates, your settings are merged back in
+- **`/var` = User data** (photos, messages, databases) — never erased by updates, never rolled back by factory reset
+
+### Decision Quick-Ref: Where to Put Files
+
+| What you have | Where to put it | Why |
+|---------------|----------------|-----|
+| App binary | `/usr/bin/` | Immutable, versioned with image |
+| Config that must not drift | `/usr/share/<pkg>/` + symlink to `/etc` | Immutable source of truth |
+| Config admin may customize | `/etc/<pkg>.d/*.conf` (drop-in) | Survives upgrades via merge, avoids conflicts |
+| Runtime data, logs, uploads | `/var/` via `StateDirectory=` or `tmpfiles.d` | Persistent, not managed by image |
+| Third-party `/opt` package | Symlink writable dirs to `/var/` | Keeps `/opt` read-only |
+
+---
+
 ## References
 
 - [bootc: Filesystem](https://bootc-dev.github.io/bootc/filesystem.html)
