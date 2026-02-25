@@ -1,5 +1,4 @@
-.PHONY: apps build test lint lint-strict ami vmdk ova \
-       os-upgrade os-apply os-rollback os-status verify \
+.PHONY: apps build test lint lint-strict ami vmdk ova gce \
        help clean
 
 # ---------------------------------------------------------------------------
@@ -61,25 +60,8 @@ vmdk: ## Create VMDK disk image via bootc-image-builder
 ova: vmdk ## Create OVA from VMDK (VMDK + OVF -> .ova tar)
 	scripts/create-ova.sh
 
-# ---------------------------------------------------------------------------
-# Operations (run ON the EC2 instance)
-# ---------------------------------------------------------------------------
-
-os-upgrade: ## Download-only upgrade (safe for business hours)
-	sudo bootc upgrade --download-only
-	sudo bootc status --verbose
-
-os-apply: ## Apply staged upgrade + reboot
-	sudo bootc upgrade --from-downloaded --apply
-
-os-rollback: ## Rollback to previous deployment + reboot
-	scripts/rollback-os.sh
-
-os-status: ## Show bootc status
-	sudo bootc status
-
-verify: ## Post-boot health checks
-	scripts/verify-instance.sh
+gce: ## Create GCE image (build raw + upload to GCP)
+	scripts/create-gce.sh
 
 # ---------------------------------------------------------------------------
 # Helpers

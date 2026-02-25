@@ -1,13 +1,14 @@
 # bootc-testboot
 
-POC for **bootc Image-Based OS** -- using OCI container images to build, deploy, and update bootable operating systems on AWS EC2 and VMware vSphere (OVA).
+POC for **bootc Image-Based OS** -- using OCI container images to build, deploy, and update bootable operating systems on AWS EC2, Google Compute Engine (GCE), and VMware vSphere (OVA).
 
 ## What is this?
 
 Instead of baking AMIs with Packer (15-30 min per change), we use a single **Containerfile** to define the entire OS: kernel, packages, configs, and application binaries. The same container tooling (podman, GHCR, CI/CD) you already use for app images now manages the OS itself.
 
 ```
-apps/ -> make apps -> output/bin/ -> Containerfile -> GHCR -> bootc-image-builder --type ami  -> AMI -> EC2
+apps/ -> make apps -> output/bin/ -> Containerfile -> GHCR -> bootc-image-builder --type ami  -> AMI  -> EC2
+                                                                                 --type gce  -> GCE  -> Compute Engine
                                                                                  --type vmdk -> VMDK -> OVA -> vSphere
                                                                                       |
                                                                  bootc upgrade  <-----+---- bootc rollback
@@ -35,16 +36,20 @@ flowchart TB
 
     subgraph diskImages [Disk Images]
         GHCR --> BIB_AMI["make ami"]
+        GHCR --> BIB_GCE["make gce"]
         GHCR --> BIB_OVA["make ova"]
         BIB_AMI -->|"auto-upload"| AMI[AWS AMI]
+        BIB_GCE -->|"gsutil + gcloud"| GCE_IMG[GCE Image]
         BIB_OVA --> VMDK[VMDK] --> OVA[OVA]
     end
 
     subgraph runPhase [Deployed Systems]
         AMI --> EC2[EC2 Instance]
+        GCE_IMG --> GCE_VM[GCE VM]
         OVA --> VS[vSphere VM]
         EC2 --> Nginx["nginx :80"]
         Nginx --> Hello["hello.service :8080"]
+        GCE_VM --> Nginx
         VS --> Nginx
     end
 ```
@@ -61,12 +66,11 @@ make build
 # Create AMI (requires privileged builder + AWS credentials)
 make ami
 
+# Create GCE image (requires privileged builder + gcloud CLI)
+make gce
+
 # Create VMDK + OVA for VMware (requires privileged builder)
 make ova
-
-# After launching EC2/vSphere VM:
-make verify          # health checks
-make os-status       # bootc status
 ```
 
 Pushing to GHCR is handled automatically by GitHub Actions on merge to `main`. No local login/push needed.
@@ -89,15 +93,13 @@ configs/
   containers-auth.json   Registry credential helper config
 scripts/
   create-ami.sh          bootc-image-builder -> AMI (auto-upload to AWS)
+  create-gce.sh          bootc-image-builder -> GCE image (upload to GCP)
   create-vmdk.sh         bootc-image-builder -> VMDK
   create-ova.sh          VMDK + OVF -> OVA (for vSphere import)
-  upgrade-os.sh          Production-safe upgrade (download/apply/check)
-  rollback-os.sh         Rollback + reboot
-  verify-instance.sh     Post-boot health checks
 templates/
   bootc-poc.ovf          OVF descriptor template for OVA packaging
 Containerfile            Single-stage: COPY pre-built binaries + configs
-Makefile                 All operations: apps, build, test, ami, vmdk, ova, ops
+Makefile                 All operations: apps, build, test, ami, gce, vmdk, ova
 config.toml              bootc-image-builder customizations
 ```
 

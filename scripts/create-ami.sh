@@ -13,7 +13,7 @@ set -euo pipefail
 
 REGISTRY="${REGISTRY:-ghcr.io/duyhenryer}"
 IMAGE="${IMAGE:-${REGISTRY}/bootc-testboot}"
-VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
+VERSION="${VERSION:-latest}"
 AWS_REGION="${AWS_REGION:-ap-southeast-1}"
 AWS_BUCKET="${AWS_BUCKET:-my-bootc-poc-bucket}"
 AMI_NAME="${AMI_NAME:-bootc-poc-${VERSION}}"
@@ -37,6 +37,7 @@ sudo podman run \
     quay.io/centos-bootc/bootc-image-builder:latest \
     --type ami \
     --rootfs ext4 \
+    --config /config.toml \
     --aws-ami-name "${AMI_NAME}" \
     --aws-bucket "${AWS_BUCKET}" \
     --aws-region "${AWS_REGION}" \

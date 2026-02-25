@@ -9,7 +9,7 @@ set -euo pipefail
 #   - sha256sum available
 # ---------------------------------------------------------------------------
 
-VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
+VERSION="${VERSION:-latest}"
 VM_NAME="${VM_NAME:-bootc-poc-${VERSION}}"
 NUM_CPUS="${NUM_CPUS:-2}"
 MEMORY_MB="${MEMORY_MB:-4096}"
