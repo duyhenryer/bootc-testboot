@@ -32,4 +32,3 @@ RUN systemctl enable cloud-init sshd firewalld chronyd
 
 # --- Validate ---
 LABEL containers.bootc=1
-RUN bootc container lint --fatal-warnings

@@ -50,4 +50,4 @@ LABEL containers.bootc=1
 LABEL org.opencontainers.image.source="https://github.com/duyhenryer/bootc-testboot"
 
 # --- Validate ---
-RUN bootc container lint --fatal-warnings
+# Linting should be done in CI, not during the build itself.
