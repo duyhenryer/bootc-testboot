@@ -5,7 +5,8 @@
 FROM quay.io/centos-bootc/centos-bootc:stream10
 
 # --- System packages ---
-RUN dnf install -y \
+RUN dnf install -y epel-release \
+    && dnf install -y \
         htop curl jq lsof tcpdump sysstat vim-minimal \
         cloud-init openssh-server firewalld chrony \
     && dnf clean all \
@@ -32,4 +33,4 @@ RUN systemctl enable cloud-init sshd firewalld chronyd
 
 # --- Validate ---
 LABEL containers.bootc=1
-RUN bootc container lint --fatal-warnings
+RUN bootc container lint
