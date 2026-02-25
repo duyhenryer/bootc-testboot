@@ -10,8 +10,6 @@ on:
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}
-  GCP_PROJECT: ${{ vars.GCP_PROJECT }}
-  GCP_BUCKET: ${{ vars.GCP_BUCKET }}
 
 jobs:
   create-gce:
@@ -22,7 +20,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -36,42 +34,11 @@ jobs:
       - name: Login to GHCR
         run: echo "${{ github.token }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Pull bootc image
-        env:
-          VERSION: ${{ inputs.image_tag }}
-        run: sudo podman pull "${{ env.IMAGE }}:${VERSION}"
-
-      - name: Build GCE raw disk
-        env:
-          VERSION: ${{ inputs.image_tag }}
-        run: |
-          mkdir -p output
-          sudo podman run \
-            --rm --privileged \
-            --pull=newer \
-            --security-opt label=type:unconfined_t \
-            -v ./configs/builder/config.toml:/config.toml:ro \
-            -v ./output:/output \
-            -v /var/lib/containers/storage:/var/lib/containers/storage \
-            quay.io/centos-bootc/bootc-image-builder:latest \
-            --type gce \
-            --rootfs ext4 \
-            --config /config.toml \
-            "${{ env.IMAGE }}:${VERSION}"
-
-      - name: Upload to GCS
-        env:
-          GCE_IMAGE_NAME: bootc-poc-${{ inputs.image_tag }}
-        run: |
-          gsutil cp output/gce/image.tar.gz "gs://${{ env.GCP_BUCKET }}/${GCE_IMAGE_NAME}.tar.gz"
-
       - name: Create GCE image
         env:
-          GCE_IMAGE_NAME: bootc-poc-${{ inputs.image_tag }}
           VERSION: ${{ inputs.image_tag }}
-        run: |
-          gcloud compute images create "${GCE_IMAGE_NAME}" \
-            --project="${{ env.GCP_PROJECT }}" \
-            --source-uri="gs://${{ env.GCP_BUCKET }}/${GCE_IMAGE_NAME}.tar.gz" \
-            --guest-os-features=UEFI_COMPATIBLE,VIRTIO_SCSI_MULTIQUEUE \
-            --description="bootc OS image built from ${{ env.IMAGE }}:${VERSION}"
+          IMAGE: ${{ env.IMAGE }}
+          GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+          GCP_BUCKET: ${{ vars.GCP_BUCKET }}
+          GCE_IMAGE_NAME: bootc-poc-${{ inputs.image_tag }}
+        run: scripts/create-image.sh gce

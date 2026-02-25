@@ -1,0 +1,66 @@
+name: Build base images
+
+on:
+  schedule:
+    - cron: '0 6 * * 0'   # Weekly Sunday 6am UTC
+  workflow_dispatch:
+    inputs:
+      distro:
+        description: 'Base distro to build'
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - centos-stream9
+          - centos-stream10
+          - fedora-40
+          - fedora-41
+
+env:
+  REGISTRY: ghcr.io
+  BASE_IMAGE: ghcr.io/${{ github.repository }}-base
+
+jobs:
+  matrix:
+    name: Set build matrix
+    runs-on: ubuntu-latest
+    outputs:
+      distros: ${{ steps.set.outputs.distros }}
+    steps:
+      - id: set
+        run: |
+          if [ "${{ inputs.distro }}" = "all" ] || [ -z "${{ inputs.distro }}" ]; then
+            echo 'distros=["centos-stream9","centos-stream10","fedora-40","fedora-41"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'distros=["${{ inputs.distro }}"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  build-base:
+    name: Build ${{ matrix.distro }}
+    runs-on: ubuntu-latest
+    needs: matrix
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: ${{ fromJson(needs.matrix.outputs.distros) }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free disk space
+        run: rm -rf /opt/hostedtoolcache
+
+      - name: Build base image
+        run: make base BASE_DISTRO=${{ matrix.distro }}
+
+      - name: Login to GHCR
+        run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push base image
+        run: |
+          podman push ${{ env.BASE_IMAGE }}-${{ matrix.distro }}:latest
+          podman tag ${{ env.BASE_IMAGE }}-${{ matrix.distro }}:latest \
+            ${{ env.BASE_IMAGE }}-${{ matrix.distro }}:$(date +%Y%m%d)
+          podman push ${{ env.BASE_IMAGE }}-${{ matrix.distro }}:$(date +%Y%m%d)
