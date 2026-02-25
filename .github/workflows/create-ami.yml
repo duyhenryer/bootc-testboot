@@ -10,8 +10,6 @@ on:
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}
-  AWS_REGION: ${{ vars.AWS_REGION }}
-  AWS_BUCKET: ${{ vars.AWS_BUCKET }}
 
 jobs:
   create-ami:
@@ -22,7 +20,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -33,27 +31,11 @@ jobs:
       - name: Login to GHCR
         run: echo "${{ github.token }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Pull bootc image
-        env:
-          VERSION: ${{ inputs.image_tag }}
-        run: sudo podman pull "${{ env.IMAGE }}:${VERSION}"
-
       - name: Create AMI
         env:
           VERSION: ${{ inputs.image_tag }}
+          IMAGE: ${{ env.IMAGE }}
           AMI_NAME: bootc-poc-${{ inputs.image_tag }}
-        run: |
-          sudo podman run \
-            --rm --privileged \
-            --pull=newer \
-            --security-opt label=type:unconfined_t \
-            -v ./configs/builder/config.toml:/config.toml:ro \
-            -v /var/lib/containers/storage:/var/lib/containers/storage \
-            -v "${HOME}/.aws:/root/.aws:ro" \
-            quay.io/centos-bootc/bootc-image-builder:latest \
-            --type ami \
-            --rootfs ext4 \
-            --aws-ami-name "${AMI_NAME}" \
-            --aws-bucket "${{ env.AWS_BUCKET }}" \
-            --aws-region "${{ env.AWS_REGION }}" \
-            "${{ env.IMAGE }}:${VERSION}"
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_BUCKET: ${{ vars.AWS_BUCKET }}
+        run: scripts/create-image.sh ami

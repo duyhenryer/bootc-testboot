@@ -1,54 +1,53 @@
 # =============================================================================
-# bootc OS image
+# Application Image (Layer 2)
 # =============================================================================
-# Apps are pre-built externally (make apps -> output/bin/).
-# This Containerfile only assembles the OS: packages + binaries + configs.
+# Base image is pre-built with production tuning (make base).
+# This layer adds: middleware + app binaries + systemd units + configs.
+#
+# Build:
+#   make build BASE_DISTRO=centos-stream9
+#   make build BASE_DISTRO=fedora-41
 # =============================================================================
-FROM quay.io/fedora/fedora-bootc:41
+ARG BASE_IMAGE=ghcr.io/duyhenryer/bootc-testboot-base
+ARG BASE_DISTRO=centos-stream9
+ARG BASE_TAG=latest
+FROM ${BASE_IMAGE}-${BASE_DISTRO}:${BASE_TAG}
 
-# --- System packages ---
-RUN dnf --setopt=fedora-cisco-openh264.enabled=0 install -y \
+# --- Middleware (Layer 2: version pinned per product) ---
+RUN dnf install -y \
         nginx \
-        cloud-init \
-        htop curl jq \
     && dnf clean all \
-    && rm -rf /var/cache/{dnf,libdnf5,ldconfig} \
-              /var/log/dnf5.log /var/lib/dnf
+    && rm -rf /var/cache/{dnf,ldconfig}
 
 # --- Pre-built app binaries (from output/bin/) ---
 COPY output/bin/ /usr/bin/
 
-# --- App systemd units ---
-COPY apps/hello/hello.service /usr/lib/systemd/system/hello.service
-# COPY apps/api/api.service   /usr/lib/systemd/system/api.service
+# --- Systemd units (all app services) ---
+COPY systemd/ /usr/lib/systemd/system/
 
-# --- App tmpfiles.d (for apps needing extra /var dirs) ---
-COPY apps/hello/hello-tmpfiles.conf /usr/lib/tmpfiles.d/hello.conf
-# COPY apps/api/api-tmpfiles.conf   /usr/lib/tmpfiles.d/api.conf
+# --- App tmpfiles.d (writable dirs for app data) ---
+COPY configs/tmpfiles.d/ /usr/lib/tmpfiles.d/
 
-# --- OS-level sysusers.d + tmpfiles.d (satisfy bootc lint) ---
-COPY configs/os/dhcpcd-sysusers.conf /usr/lib/sysusers.d/dhcpcd.conf
+# --- OS-level tmpfiles.d (satisfy bootc lint) ---
 COPY configs/os/bootc-poc-tmpfiles.conf /usr/lib/tmpfiles.d/bootc-poc.conf
 
-# --- nginx: config in /usr for immutability (per S6 guidance) ---
+# --- nginx: config in /usr for immutability ---
 COPY configs/os/nginx.conf /usr/share/nginx/nginx.conf
 RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf
-
-# --- SSH hardening via drop-in (cleaner than sed for 3-way merge) ---
-COPY configs/os/sshd-hardening.conf /etc/ssh/sshd_config.d/99-hardening.conf
 
 # --- ECR credential helper config ---
 COPY configs/os/containers-auth.json /etc/containers/auth.json
 
-# --- Enable services ---
-RUN systemctl enable nginx hello cloud-init
-# RUN systemctl enable api worker
+# --- App firewall rules ---
+RUN firewall-offline-cmd --zone=public \
+    --add-port=80/tcp --add-port=443/tcp --add-port=8080/tcp
+
+# --- Enable app services ---
+RUN systemctl enable nginx hello
 
 # --- Image metadata ---
 LABEL containers.bootc=1
 LABEL org.opencontainers.image.source="https://github.com/duyhenryer/bootc-testboot"
 
-# --- Validate image (catches misconfigurations) ---
+# --- Validate ---
 RUN bootc container lint --fatal-warnings
-
-

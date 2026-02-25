@@ -5,25 +5,40 @@ on:
     branches: [main]
     paths:
       - "Containerfile"
-      - "apps/**"
+      - "repos/**"
+      - "systemd/**"
       - "configs/**"
   pull_request:
     branches: [main]
     paths:
       - "Containerfile"
-      - "apps/**"
+      - "repos/**"
+      - "systemd/**"
       - "configs/**"
+  workflow_dispatch:
+    inputs:
+      base_distro:
+        description: 'Base distro to build on'
+        default: 'centos-stream9'
+        type: choice
+        options:
+          - centos-stream9
+          - centos-stream10
+          - fedora-40
+          - fedora-41
 
 env:
   REGISTRY: ghcr.io
   IMAGE: ghcr.io/${{ github.repository }}
+  BASE_IMAGE: ghcr.io/${{ github.repository }}-base
+  BASE_DISTRO: ${{ inputs.base_distro || 'centos-stream9' }}
 
 jobs:
   test:
     name: Go tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-go@v5
         with:
@@ -31,20 +46,23 @@ jobs:
 
       - name: Run tests
         run: |
-          for d in apps/*/; do
-            echo "==> Testing $d"
-            (cd "$d" && go test -v ./...)
+          for d in repos/*/; do
+            if [ -f "$d/go.mod" ]; then
+              echo "==> Testing $d"
+              (cd "$d" && go test -v ./...)
+            fi
           done
 
   build:
-    name: Build & lint bootc image
+    name: Build & push (${{ inputs.base_distro || 'centos-stream9' }})
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     needs: test
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -60,17 +78,16 @@ jobs:
         run: echo "version=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
 
       - name: Build apps + image
-        run: make build VERSION=${{ steps.version.outputs.version }}
+        run: make build BASE_DISTRO=${{ env.BASE_DISTRO }} VERSION=${{ steps.version.outputs.version }}
 
       - name: Strict lint
-        run: make lint-strict VERSION=${{ steps.version.outputs.version }}
+        run: make lint-strict
 
       - name: Login to GHCR
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Push image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          podman push ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+          podman push ${{ env.IMAGE }}:${{ env.BASE_DISTRO }}-${{ steps.version.outputs.version }}
+          podman tag ${{ env.IMAGE }}:${{ env.BASE_DISTRO }}-${{ steps.version.outputs.version }} ${{ env.IMAGE }}:latest
           podman push ${{ env.IMAGE }}:latest

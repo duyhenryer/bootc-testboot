@@ -34,33 +34,16 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Login to GHCR
         run: echo "${{ github.token }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Pull bootc image
-        env:
-          VERSION: ${{ inputs.image_tag }}
-        run: sudo podman pull "${{ env.IMAGE }}:${VERSION}"
-
       - name: Create VMDK
         env:
           VERSION: ${{ inputs.image_tag }}
-        run: |
-          mkdir -p output
-          sudo podman run \
-            --rm --privileged \
-            --pull=newer \
-            --security-opt label=type:unconfined_t \
-            -v ./configs/builder/config.toml:/config.toml:ro \
-            -v ./output:/output \
-            -v /var/lib/containers/storage:/var/lib/containers/storage \
-            quay.io/centos-bootc/bootc-image-builder:latest \
-            --type vmdk \
-            --rootfs ext4 \
-            --config /config.toml \
-            "${{ env.IMAGE }}:${VERSION}"
+          IMAGE: ${{ env.IMAGE }}
+        run: scripts/create-image.sh vmdk
 
       - name: Package OVA
         env:

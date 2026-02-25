@@ -1,155 +1,150 @@
 # bootc-testboot
 
-POC for **bootc Image-Based OS** -- using OCI container images to build, deploy, and update bootable operating systems on AWS EC2, Google Compute Engine (GCE), and VMware vSphere (OVA).
-
-## What is this?
-
-Instead of baking AMIs with Packer (15-30 min per change), we use a single **Containerfile** to define the entire OS: kernel, packages, configs, and application binaries. The same container tooling (podman, GHCR, CI/CD) you already use for app images now manages the OS itself.
-
-```
-apps/ -> make apps -> output/bin/ -> Containerfile -> GHCR -> bootc-image-builder --type ami  -> AMI  -> EC2
-                                                                                 --type gce  -> GCE  -> Compute Engine
-                                                                                 --type vmdk -> VMDK -> OVA -> vSphere
-                                                                                      |
-                                                                 bootc upgrade  <-----+---- bootc rollback
-```
+Production-ready **bootc Image-Based OS** — using OCI container images to build, deploy, and update bootable operating systems on AWS, GCP, and VMware.
 
 ## Architecture
 
+**2-Layer image design:**
+
 ```mermaid
-flowchart TB
-    subgraph appBuild [App Build — separate step]
-        GoSrc["apps/hello/main.go\napps/api/main.go\n..."] --> MakeApps["make apps"]
-        MakeApps --> OutputBin["output/bin/hello\noutput/bin/api\n..."]
+flowchart LR
+    subgraph layer1 ["Layer 1 — Base (weekly)"]
+        BaseShared["base/shared/\nsysctl, systemd, SSH\njournald, chrony"]
+        CentOS9["centos/stream9"]
+        CentOS10["centos/stream10"]
+        Fedora40["fedora/40"]
+        Fedora41["fedora/41"]
+        BaseShared --> CentOS9 & CentOS10 & Fedora40 & Fedora41
     end
 
-    subgraph osBuild [OS Build — Containerfile]
-        OutputBin -->|"COPY output/bin/ /usr/bin/"| BootcImage["bootc base image\n+ packages + configs"]
-        Configs["configs/ + apps/*/*.service"] --> BootcImage
+    subgraph layer2 ["Layer 2 — App (per commit)"]
+        AppBuild["FROM base\n+ nginx\n+ Go binaries\n+ systemd units"]
     end
 
-    subgraph ciPipeline [CI Pipeline]
-        BootcImage --> PodmanBuild["make build"]
-        PodmanBuild --> Lint["bootc container lint"]
-        Lint --> GHCR["ghcr.io/.../bootc-testboot:tag"]
+    subgraph disk ["Disk Images (on-demand)"]
+        AMI["make ami → AWS"]
+        GCE["make gce → GCP"]
+        OVA["make ova → vSphere"]
+        QCOW2["make qcow2 → KVM"]
     end
 
-    subgraph diskImages [Disk Images]
-        GHCR --> BIB_AMI["make ami"]
-        GHCR --> BIB_GCE["make gce"]
-        GHCR --> BIB_OVA["make ova"]
-        BIB_AMI -->|"auto-upload"| AMI[AWS AMI]
-        BIB_GCE -->|"gsutil + gcloud"| GCE_IMG[GCE Image]
-        BIB_OVA --> VMDK[VMDK] --> OVA[OVA]
-    end
-
-    subgraph runPhase [Deployed Systems]
-        AMI --> EC2[EC2 Instance]
-        GCE_IMG --> GCE_VM[GCE VM]
-        OVA --> VS[vSphere VM]
-        EC2 --> Nginx["nginx :80"]
-        Nginx --> Hello["hello.service :8080"]
-        GCE_VM --> Nginx
-        VS --> Nginx
-    end
+    CentOS9 & Fedora41 --> AppBuild
+    AppBuild --> AMI & GCE & OVA & QCOW2
 ```
+
+### Supported Base Distros
+
+| Distro | Image | Lifecycle |
+|--------|-------|-----------|
+| CentOS Stream 9 | `centos-bootc:stream9` | ~2027 |
+| CentOS Stream 10 | `centos-bootc:stream10` | ~2030 |
+| Fedora 40 | `fedora-bootc:40` | ~2025 |
+| Fedora 41 | `fedora-bootc:41` | ~2026 |
+
+> Ubuntu bootc is not production-ready. See [docs/014](docs/014-ubuntu-bootc-status.md).
 
 ## Quick Start
 
 ```bash
-# Run tests
+# 1. Build base image (choose distro)
+make base BASE_DISTRO=centos-stream9
+
+# 2. Run tests
 make test
 
-# Build apps to output/bin/, then build the bootc image
-make build
+# 3. Build application image (on chosen base)
+make build BASE_DISTRO=centos-stream9
 
-# Create AMI (requires privileged builder + AWS credentials)
-make ami
-
-# Create GCE image (requires privileged builder + gcloud CLI)
-make gce
-
-# Create VMDK + OVA for VMware (requires privileged builder)
-make ova
+# 4. Create disk images
+make ami      # AWS AMI
+make gce      # Google Compute Engine
+make ova      # VMware OVA
+make qcow2    # KVM/libvirt
 ```
-
-Pushing to GHCR is handled automatically by GitHub Actions on merge to `main`. No local login/push needed.
 
 ## Project Structure
 
 ```
-apps/
-  hello/                 Go HTTP server + systemd unit (POC app)
-    main.go              GET / -> JSON, GET /health -> ok
-    main_test.go
-    go.mod
-    hello.service        DynamicUser=yes, StateDirectory=hello
-    hello-tmpfiles.conf
-output/                  (gitignored) build artifacts
-  bin/                   pre-built Go binaries
+base/
+  shared/                  Production tuning (sysctl, systemd, SSH, journald, chrony)
+  fedora/40/Containerfile  Base image: Fedora 40
+  fedora/41/Containerfile  Base image: Fedora 41
+  centos/stream9/          Base image: CentOS Stream 9
+  centos/stream10/         Base image: CentOS Stream 10
+repos/
+  hello/                   Go app: HTTP server + systemd unit
+    main.go, go.mod, main_test.go
+systemd/
+  hello.service            Systemd unit files (all apps)
 configs/
-  nginx.conf             Reverse proxy to app services
-  sshd-hardening.conf    Drop-in: no root login, no password
-  containers-auth.json   Registry credential helper config
+  builder/config.toml      bootc-image-builder (user, partition, kernel)
+  builder/bootc-poc.ovf    OVF descriptor template for OVA packaging
+  os/nginx.conf            Reverse proxy config
+  tmpfiles.d/              App writable directory definitions
 scripts/
-  create-ami.sh          bootc-image-builder -> AMI (auto-upload to AWS)
-  create-gce.sh          bootc-image-builder -> GCE image (upload to GCP)
-  create-vmdk.sh         bootc-image-builder -> VMDK
-  create-ova.sh          VMDK + OVF -> OVA (for vSphere import)
-templates/
-  bootc-poc.ovf          OVF descriptor template for OVA packaging
-Containerfile            Single-stage: COPY pre-built binaries + configs
-Makefile                 All operations: apps, build, test, ami, gce, vmdk, ova
-config.toml              bootc-image-builder customizations
+  create-image.sh          Unified disk image builder (ami|gce|vmdk|qcow2|raw|vhd)
+  create-ova.sh            VMDK + OVF → OVA packaging
+Containerfile              Layer 2: application image
+Makefile                   All operations
 ```
 
 ## Adding a New App
 
-1. Create `apps/myapp/` with `main.go`, `go.mod`, `myapp.service`
-2. Add COPY + enable lines in the `Containerfile`:
+1. Create `repos/myapp/` with `main.go`, `go.mod`
+2. Add unit file: `systemd/myapp.service`
+3. Add tmpfiles if needed: `configs/tmpfiles.d/myapp.conf`
+4. Add `COPY` + `enable` in `Containerfile`:
    ```dockerfile
-   COPY apps/myapp/myapp.service /usr/lib/systemd/system/myapp.service
    RUN systemctl enable myapp
    ```
-3. Add upstream + location in `configs/nginx.conf`
-4. `make build` -- the `apps` target auto-discovers `apps/*/` and builds all binaries to `output/bin/`
+5. Add upstream + location in `configs/os/nginx.conf`
+6. `make build` — auto-discovers `repos/*/` and builds all binaries
 
-No need to modify the Makefile or Go build logic -- any directory under `apps/` with a `main.go` is automatically compiled.
+## CI Workflows
 
-## Learning Docs
+| Workflow | Trigger | What |
+|----------|---------|------|
+| `build-base.yml` | Weekly + manual | Build all 4 base images, push to GHCR |
+| `build-bootc.yml` | Push to main | Test + build app image, push to GHCR |
+| `create-ami.yml` | Manual | Build AMI, upload to AWS |
+| `create-gce.yml` | Manual | Build GCE image, upload to GCP |
+| `create-ova.yml` | Manual | Build VMDK + OVA, upload as artifact |
 
-Start with the architecture overview, then work through the numbered docs:
+## Base Image Tuning
 
-| Doc | Topic |
-|-----|-------|
-| [000](docs/000-architecture-overview.md) | Architecture Overview (diagrams) |
-| [001](docs/001-what-is-bootc.md) | What is bootc? |
-| [002](docs/002-architecture-and-ostree.md) | Architecture & OSTree |
-| [003](docs/003-filesystem-layout.md) | Filesystem Layout (/usr, /etc, /var) |
-| [004](docs/004-building-bootc-images.md) | Building bootc Images |
-| [005](docs/005-users-groups-ssh.md) | Users, Groups & SSH Keys |
-| [006](docs/006-secrets-management.md) | Secrets Management |
-| [007](docs/007-bootc-image-builder.md) | bootc-image-builder (AMI, VMDK, OVA) |
-| [008](docs/008-upgrade-and-rollback.md) | Upgrade & Rollback |
-| [009](docs/009-registries-and-offline.md) | Registries & Offline Updates |
-| [010](docs/010-relationships.md) | Relationships with Other Projects |
-| [011](docs/011-poc-walkthrough.md) | POC Walkthrough (step-by-step) |
-| [012](docs/012-runbook.md) | Operations Runbook |
-| [013](docs/013-base-distro-comparison.md) | Base Distro Comparison (Fedora, CentOS, RHEL, Ubuntu, Debian) |
+All base images include production hardening:
+
+| Config | What |
+|--------|------|
+| `sysctl-tuning.conf` | `somaxconn=65535`, `file-max=2M`, `tcp_tw_reuse=1` |
+| `systemd-limits.conf` | `DefaultLimitNOFILE=65535`, `DefaultTasksMax=65535` |
+| `journald.conf` | Persistent, compressed, `500M` max, `30d` retention |
+| `sshd-hardening.conf` | No root, no password, `MaxAuthTries 3` |
+| `chrony-custom.conf` | NTP sync, `makestep 1.0 3` for cloud VMs |
 
 ## Key Concepts
 
-- `/usr` is **read-only** at runtime -- all changes via Containerfile rebuild
+- `/usr` is **read-only** at runtime — changes via Containerfile rebuild only
 - `/etc` is **mutable** with 3-way merge on upgrade
-- `/var` is **persistent** and **not rolled back** -- app data survives OS rollback
-- `bootc upgrade --download-only` for safe pre-staging
-- `bootc rollback` = swap bootloader pointer (~2 min)
-- Never use `rpm-ostree install` on a bootc host
+- `/var` is **persistent** — app data survives OS rollback
+- `bootc upgrade` pulls new image, `bootc rollback` swaps back (~2 min)
 
-## References
+## Learning Docs
 
-- [bootc Introduction](https://bootc-dev.github.io/bootc/intro.html)
-- [bootc Filesystem](https://bootc-dev.github.io/bootc/filesystem.html)
-- [bootc Upgrades](https://bootc-dev.github.io/bootc/upgrades.html)
-- [bootc Building Guidance](https://bootc-dev.github.io/bootc/building/guidance.html)
-- [bootc-image-builder](https://github.com/osbuild/bootc-image-builder)
+| Doc | Topic |
+|-----|-------|
+| [000](docs/000-architecture-overview.md) | Architecture Overview |
+| [001](docs/001-what-is-bootc.md) | What is bootc? |
+| [002](docs/002-architecture-and-ostree.md) | Architecture & OSTree |
+| [003](docs/003-filesystem-layout.md) | Filesystem Layout |
+| [004](docs/004-building-bootc-images.md) | Building bootc Images |
+| [005](docs/005-users-groups-ssh.md) | Users, Groups & SSH |
+| [006](docs/006-secrets-management.md) | Secrets Management |
+| [007](docs/007-bootc-image-builder.md) | bootc-image-builder |
+| [008](docs/008-upgrade-and-rollback.md) | Upgrade & Rollback |
+| [009](docs/009-registries-and-offline.md) | Registries & Offline |
+| [010](docs/010-relationships.md) | Related Projects |
+| [011](docs/011-poc-walkthrough.md) | POC Walkthrough |
+| [012](docs/012-runbook.md) | Operations Runbook |
+| [013](docs/013-base-distro-comparison.md) | Base Distro Comparison |
+| [014](docs/014-ubuntu-bootc-status.md) | Ubuntu bootc Status |
