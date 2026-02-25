@@ -15,3 +15,4 @@ aws.secrets
 *.swp
 *.swo
 *~
+docs/report.md

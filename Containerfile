@@ -39,9 +39,8 @@ RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY configs/os/containers-auth.json /etc/containers/auth.json
 
 # --- App firewall rules ---
-RUN firewall-offline-cmd --zone=public --add-port=80/tcp && \
-    firewall-offline-cmd --zone=public --add-port=443/tcp && \
-    firewall-offline-cmd --zone=public --add-port=8080/tcp
+RUN firewall-offline-cmd --zone=public \
+    --add-port=80/tcp --add-port=443/tcp --add-port=8080/tcp
 
 # --- Enable app services ---
 RUN systemctl enable nginx hello
