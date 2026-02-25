@@ -16,3 +16,4 @@ aws.secrets
 *.swo
 *~
 docs/report.md
+tmp-bootc-images/
