@@ -31,7 +31,6 @@ env:
   REGISTRY: ghcr.io
   IMAGE: ghcr.io/${{ github.repository }}
   BASE_IMAGE: ghcr.io/${{ github.repository }}-base
-  # Default distro for push/PR, overridden by workflow_dispatch input
   BASE_DISTRO: ${{ inputs.base_distro || 'centos-stream9' }}
 
 jobs:
@@ -55,7 +54,8 @@ jobs:
           done
 
   build:
-    name: Build & lint (${{ inputs.base_distro || 'centos-stream9' }})
+    name: Build & push (${{ inputs.base_distro || 'centos-stream9' }})
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     needs: test
     permissions:
@@ -84,11 +84,9 @@ jobs:
         run: make lint-strict
 
       - name: Login to GHCR
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Push image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           podman push ${{ env.IMAGE }}:${{ env.BASE_DISTRO }}-${{ steps.version.outputs.version }}
           podman tag ${{ env.IMAGE }}:${{ env.BASE_DISTRO }}-${{ steps.version.outputs.version }} ${{ env.IMAGE }}:latest
