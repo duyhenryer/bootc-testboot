@@ -10,8 +10,8 @@
 # =============================================================================
 ARG BASE_IMAGE=ghcr.io/duyhenryer/bootc-testboot-base
 ARG BASE_DISTRO=centos-stream9
-ARG BASE_TAG=latest
-FROM ${BASE_IMAGE}-${BASE_DISTRO}:${BASE_TAG}
+ARG BASE_IMAGE_VERSION=latest
+FROM ${BASE_IMAGE}:${BASE_DISTRO}-${BASE_IMAGE_VERSION}
 
 # --- Middleware (Layer 2: version pinned per product) ---
 RUN dnf install -y \
