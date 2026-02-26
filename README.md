@@ -100,15 +100,49 @@ Makefile                   All operations
 5. Add upstream + location in `configs/os/nginx.conf`
 6. `make build` — auto-discovers `repos/*/` and builds all binaries
 
-## CI Workflows
+## CI Architecture (Distribution Model)
 
-| Workflow | Trigger | What |
-|----------|---------|------|
-| `build-base.yml` | Weekly + manual | Build all 4 base images, push to GHCR |
-| `build-bootc.yml` | Push to main | Test + build app image, push to GHCR |
-| `create-ami.yml` | Manual | Build AMI, upload to AWS |
-| `create-gce.yml` | Manual | Build GCE image, upload to GCP |
-| `create-ova.yml` | Manual | Build VMDK + OVA, upload as artifact |
+The CI/CD pipeline is designed around a **4-Layer Artifact Distribution Registry**:
+
+```mermaid
+graph TD
+    subgraph L1["Layer 1: Base Build (build-base.yml)"]
+        A[Push to main<br>Modify base/*] --> B(Build base image)
+        B --> C[Push: ghcr.io/...:base-fedora-41]
+        B --> D[Push: ghcr.io/...:base-centos-stream9]
+    end
+
+    subgraph L2["Layer 2: Application Build (build-bootc.yml)"]
+        E[Push to main<br>Modify repos/* or Containerfile] --> F(Build app image<br>FROM base-*)
+        F --> G[Push: ghcr.io/...:centos-stream9-vN]
+    end
+
+    subgraph L3["Layer 3: Artifact Generation (build-bootc.yml)"]
+        G -- Trigger Auto Jobs --> H{bootc-image-builder}
+        H -->|format: qcow2| I[qcow2 file]
+        H -->|format: ami| J[ami file]
+        H -->|format: vmdk| K[vmdk file]
+        H -->|format: raw| L[raw file]
+        H -->|format: iso| M[iso file]
+    end
+
+    subgraph L4["Layer 4: OCI Packing & Distribution"]
+        I --> N(Pack into scratch container)
+        J --> N
+        K --> N
+        L --> N
+        M --> N
+        N --> O[(GHCR: OCI Registry)]
+        
+        O -.-> P[podman pull ...:centos-stream9-qcow2-vN]
+        O -.-> Q[podman pull ...:centos-stream9-iso-vN]
+    end
+
+    C -.->|Used as FROM| F
+    D -.->|Used as FROM| F
+```
+
+> For deploying these generated distribution images manually to AWS, GCP, or VMware, refer to [Manual Deployments Guide](docs/015-manual-deployments.md).
 
 ## Base Image Tuning
 
