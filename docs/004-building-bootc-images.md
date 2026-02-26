@@ -119,7 +119,7 @@ Put configuration in `/usr` when it should be part of the immutable image:
 For apps that look in `/etc`, symlink:
 
 ```dockerfile
-COPY repos/hello/rootfs/ /
+COPY bootc/services/nginx/rootfs/ /
 RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf
 ```
 
@@ -220,7 +220,8 @@ RUN dnf install -y nginx cloud-init htop curl jq \
 COPY --from=builder /out/hello /usr/bin/hello
 
 # --- App configs via rootfs overlay (systemd, tmpfiles, nginx) ---
-COPY repos/hello/rootfs/ /
+COPY bootc/apps/hello/rootfs/ /
+COPY bootc/services/nginx/rootfs/ /
 RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf
 
 # --- Drop-in for SSH (via base OS rootfs overlay) ---

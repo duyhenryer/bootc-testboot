@@ -23,7 +23,8 @@ RUN dnf install -y \
 COPY output/bin/ /usr/bin/
 
 # --- App Configurations (Rootfs Overlay) ---
-COPY repos/hello/rootfs/ /
+COPY bootc/apps/*/rootfs/ /
+COPY bootc/services/*/rootfs/ /
 
 # --- nginx: immutability symlink ---
 RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf

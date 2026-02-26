@@ -7,7 +7,7 @@ on:
       - "Containerfile"
       - "repos/**"
       - "base/**"
-      - "builder/**"
+      - "bootc/**"
   workflow_dispatch:
     inputs:
       base_distro:

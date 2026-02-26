@@ -46,8 +46,8 @@ flowchart TB
 |-------|----------|-----------------|
 | **Kernel** | Linux kernel + modules | `/usr/lib/modules` (from base image) |
 | **Userspace** | systemd, coreutils, packages | `RUN dnf install ...` |
-| **Apps** | Binaries + systemd units | `COPY repos/*/rootfs/` → `/usr/bin`, `/usr/lib/systemd/system` |
-| **Configs** | nginx, sshd, etc. | `COPY base/rootfs/` \u0026 `repos/*/rootfs/` |
+| **Apps** | Binaries + systemd units | `COPY bootc/apps/*/rootfs/` → `/usr/bin`, `/usr/lib/systemd/system` |
+| **Configs** | nginx, sshd, etc. | `COPY base/rootfs/` \u0026 `COPY bootc/services/*/rootfs/` |
 
 ---
 
@@ -99,7 +99,8 @@ make apps                          make build
     ├─ repos/api/   → output/bin/      │    ├─ RUN dnf install nginx cloud-init ...
     └─ ...                             │    ├─ COPY output/bin/ /usr/bin/
                                        │    ├─ COPY base/rootfs /
-                                       │    ├─ COPY repos/*/rootfs/ /
+                                       │    ├─ COPY bootc/apps/*/rootfs/ /
+                                       │    ├─ COPY bootc/services/*/rootfs/ /
                                        │    └─ RUN bootc container lint
                                        │
                                        └─ podman push → ghcr.io/…
@@ -202,11 +203,11 @@ flowchart LR
 ### Adding a New App
 
 1. Create `repos/newapp/` with `main.go`, `go.mod`
-2. Create `repos/newapp/rootfs/` mimicking the OS structure.
+2. Create `bootc/apps/newapp/rootfs/` mimicking the OS structure.
 3. Add `RUN systemctl enable newapp`
-4. `make build` (auto-discovers all `repos/*/` dirs)
+4. `make build` (auto-discovers all `repos/*/` dirs for compiling bins)
 
-All apps share the same OS image; scaling = more `repos/` dirs + COPY lines.
+All apps share the same OS image; scaling = more `bootc/apps/` dirs + COPY lines.
 
 ---
 

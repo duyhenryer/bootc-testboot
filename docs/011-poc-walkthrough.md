@@ -60,7 +60,7 @@ bootc-testboot/
 │   ├── build-bootc.yml
 │   ├── create-ami.yml
 │   └── create-ova.yml
-├── Containerfile              # Layer 2: app image (COPY repos/*/rootfs)
+├── Containerfile              # Layer 2: app image (COPY bootc/apps/*/rootfs)
 └── Makefile
 ```
 
@@ -95,7 +95,7 @@ make build
 This runs two steps automatically:
 
 1. **`make apps`** — compiles all Go apps under `repos/*/` to `output/bin/` (static binaries, CGO disabled).
-2. **`podman build`** — assembles the OS image from the base OCI image, copying pre-built binaries + `repos/*/rootfs/` overlays.
+2. **`podman build`** — assembles the OS image from the base OCI image, copying pre-built binaries + `bootc/apps/*/rootfs/` and `bootc/services/*/rootfs/` overlays.
 
 **Expected output:**
 
@@ -352,7 +352,7 @@ repos/api/
 Add COPY + enable lines (the binary is auto-built by `make apps`):
 
 ```dockerfile
-COPY repos/api/rootfs/ /
+COPY bootc/apps/api/rootfs/ /
 RUN systemctl enable api
 ```
 
