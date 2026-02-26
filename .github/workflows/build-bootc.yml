@@ -324,10 +324,67 @@ jobs:
           COPY . /
           EOF
           
-          IMAGE_TAG=${{ env.IMAGE }}:${{ matrix.distro }}-${{ matrix.format }}-${{ needs.create-manifest.outputs.version }}-${{ matrix.arch }}
+          ARTIFACT_IMAGE=${{ env.IMAGE }}-${{ matrix.distro }}-${{ matrix.format }}
+          IMAGE_TAG=${ARTIFACT_IMAGE}:${{ needs.create-manifest.outputs.version }}-${{ matrix.arch }}
+          LATEST_TAG=${ARTIFACT_IMAGE}:latest-${{ matrix.arch }}
           
           cd output
-          sudo buildah bud --tag $IMAGE_TAG -f Containerfile.scratch .
+          sudo buildah bud --tag $IMAGE_TAG --tag $LATEST_TAG -f Containerfile.scratch .
           
           echo "${{ github.token }}" | sudo buildah login ghcr.io -u "${{ github.actor }}" --password-stdin
           sudo buildah push $IMAGE_TAG
+          sudo buildah push $LATEST_TAG
+
+  create-artifact-manifest:
+    name: Create multi-platform artifact manifests
+    needs: [matrix, create-manifest, build-artifacts]
+    if: needs.matrix.outputs.has_artifacts == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to GHCR
+        run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Create and push artifact manifests
+        run: |
+          set -euo pipefail
+          DISTRO="${{ needs.matrix.outputs.distro }}"
+          VERSION_TAG="${{ needs.create-manifest.outputs.version }}"
+          
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PLATFORMS="${{ github.event.inputs.platforms }}"
+            FORMATS="${{ github.event.inputs.formats }}"
+          else
+            PLATFORMS="linux/amd64,linux/arm64"
+            FORMATS="qcow2,ami,raw,vmdk,anaconda-iso"
+          fi
+          
+          IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
+          ARCHS=()
+          for PLATFORM in "${PLATFORM_ARRAY[@]}"; do
+            ARCHS+=("${PLATFORM#linux/}")
+          done
+          
+          IFS=',' read -ra FORMAT_ARRAY <<< "$FORMATS"
+          
+          for FMT in "${FORMAT_ARRAY[@]}"; do
+            ARTIFACT_IMAGE="${{ env.IMAGE }}-${DISTRO}-${FMT}"
+            
+            for TAG_TYPE in "latest" "$VERSION_TAG"; do
+              MANIFEST_TAG="${TAG_TYPE}"
+              echo "Creating manifest for $ARTIFACT_IMAGE:$MANIFEST_TAG"
+              
+              podman manifest create "$ARTIFACT_IMAGE:$MANIFEST_TAG"
+              for ARCH in "${ARCHS[@]}"; do
+                MANIFEST_IMAGE="$ARTIFACT_IMAGE:$MANIFEST_TAG-$ARCH"
+                echo "Adding $MANIFEST_IMAGE to manifest"
+                podman manifest add "$ARTIFACT_IMAGE:$MANIFEST_TAG" "$MANIFEST_IMAGE"
+              done
+              
+              echo "Pushing manifest $ARTIFACT_IMAGE:$MANIFEST_TAG"
+              podman manifest push "$ARTIFACT_IMAGE:$MANIFEST_TAG" "docker://$ARTIFACT_IMAGE:$MANIFEST_TAG"
+              podman manifest rm "$ARTIFACT_IMAGE:$MANIFEST_TAG" || true
+            done
+          done
