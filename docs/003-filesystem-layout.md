@@ -121,8 +121,8 @@ Default: **regular directory** (part of image). Base images typically keep it th
 ### Practical: Put Config in /usr
 
 ```dockerfile
-# Good: config in /usr (immutable)
-COPY configs/nginx.conf /usr/share/nginx/nginx.conf
+# Good: config in /usr (immutable) via rootfs overlay
+COPY repos/hello/rootfs/ /
 RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf
 ```
 
@@ -151,11 +151,11 @@ Metadata (uid, gid, xattrs) counts as "modified"—changing any of these blocks 
 Avoid editing main config files. Use drop-ins instead:
 
 ```dockerfile
-# Good: drop-in, less drift
-COPY configs/sshd-hardening.conf /etc/ssh/sshd_config.d/99-hardening.conf
+# Good: drop-in, less drift (placed inside base/rootfs directory tree)
+COPY base/rootfs/ /
 
 # Risky: editing main file; 3-way merge can conflict
-# COPY configs/sshd_config /etc/ssh/sshd_config
+# COPY rootfs/etc/ssh/sshd_config /etc/ssh/sshd_config
 ```
 
 ### Option: Transient /etc
@@ -193,7 +193,7 @@ Pre-create directories needed by services:
 
 ```dockerfile
 # tmpfiles.d (bootc container lint warns if missing for /var dirs)
-COPY apps/hello/hello-tmpfiles.conf /usr/lib/tmpfiles.d/hello.conf
+COPY repos/hello/rootfs/ /
 ```
 
 ```conf
@@ -336,11 +336,8 @@ flowchart TB
 # Pre-built binary in /usr (read-only when deployed)
 COPY output/bin/ /usr/bin/
 
-# systemd unit with StateDirectory (auto-creates /var/lib/hello)
-COPY apps/hello/hello.service /usr/lib/systemd/system/hello.service
-
-# Optional: extra /var dirs via tmpfiles.d
-COPY apps/hello/hello-tmpfiles.conf /usr/lib/tmpfiles.d/hello.conf
+# Apps ship entirely within their rootfs overlay (binaries, services, tmpfiles)
+COPY repos/hello/rootfs/ /
 
 RUN systemctl enable hello
 ```
@@ -348,16 +345,16 @@ RUN systemctl enable hello
 ### Example 2: Config in /usr, Symlink in /etc
 
 ```dockerfile
-# Immutable config in /usr
-COPY configs/nginx.conf /usr/share/nginx/nginx.conf
+# Immutable config in /usr via rootfs overlay
+COPY repos/hello/rootfs/ /
 RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf
 ```
 
 ### Example 3: Drop-In for /etc
 
 ```dockerfile
-# Avoid editing main config; use drop-in
-COPY configs/sshd-hardening.conf /etc/ssh/sshd_config.d/99-hardening.conf
+# Avoid editing main config; use drop-in via rootfs
+COPY base/rootfs/ /
 ```
 
 ### Example 4: /opt Package Needing Writable Dir

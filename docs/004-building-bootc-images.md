@@ -119,7 +119,7 @@ Put configuration in `/usr` when it should be part of the immutable image:
 For apps that look in `/etc`, symlink:
 
 ```dockerfile
-COPY configs/nginx.conf /usr/share/nginx/nginx.conf
+COPY repos/hello/rootfs/ /
 RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf
 ```
 
@@ -203,9 +203,9 @@ Use `podman build`, `buildah`, or `docker build`—any tool that produces OCI im
 # =============================================================================
 FROM docker.io/library/golang:1.22-alpine AS builder
 WORKDIR /build
-COPY apps/hello/go.mod apps/hello/
-COPY apps/hello/*.go   apps/hello/
-RUN cd apps/hello && CGO_ENABLED=0 go build -o /out/hello .
+COPY repos/hello/go.mod repos/hello/
+COPY repos/hello/*.go   repos/hello/
+RUN cd repos/hello && CGO_ENABLED=0 go build -o /out/hello .
 
 # =============================================================================
 # Stage 2: bootc OS image
@@ -219,18 +219,12 @@ RUN dnf install -y nginx cloud-init htop curl jq \
 # --- App binaries from builder stage ---
 COPY --from=builder /out/hello /usr/bin/hello
 
-# --- App systemd units ---
-COPY apps/hello/hello.service /usr/lib/systemd/system/hello.service
-
-# --- App tmpfiles.d (for extra /var dirs if needed) ---
-COPY apps/hello/hello-tmpfiles.conf /usr/lib/tmpfiles.d/hello.conf
-
-# --- Config in /usr for immutability ---
-COPY configs/nginx.conf /usr/share/nginx/nginx.conf
+# --- App configs via rootfs overlay (systemd, tmpfiles, nginx) ---
+COPY repos/hello/rootfs/ /
 RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf
 
-# --- Drop-in for SSH (avoids 3-way merge issues) ---
-COPY configs/sshd-hardening.conf /etc/ssh/sshd_config.d/99-hardening.conf
+# --- Drop-in for SSH (via base OS rootfs overlay) ---
+COPY base/rootfs/ /
 
 # --- Enable services ---
 RUN systemctl enable nginx hello cloud-init

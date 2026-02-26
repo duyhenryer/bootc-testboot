@@ -115,7 +115,7 @@ sudo podman run \
   --privileged \
   --pull=newer \
   --security-opt label=type:unconfined_t \
-  -v ./configs/builder/config.toml:/config.toml:ro \
+  -v ./builder/qcow2/config.toml:/config.toml:ro \
   -v ./output:/output \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   quay.io/centos-bootc/bootc-image-builder:latest \
@@ -222,7 +222,7 @@ sudo podman run \
   --privileged \
   --pull=newer \
   --security-opt label=type:unconfined_t \
-  -v ./configs/builder/config.toml:/config.toml:ro \
+  -v ./builder/qcow2/config.toml:/config.toml:ro \
   -v ./output:/output \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   quay.io/centos-bootc/bootc-image-builder:latest \
@@ -268,7 +268,7 @@ sudo podman run \
   --privileged \
   --pull=newer \
   --security-opt label=type:unconfined_t \
-  -v ./configs/builder/config.toml:/config.toml:ro \
+  -v ./builder/qcow2/config.toml:/config.toml:ro \
   -v ./output:/output \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   quay.io/centos-bootc/bootc-image-builder:latest \
@@ -361,7 +361,7 @@ sudo podman run \
   --rm --privileged \
   --pull=newer \
   --security-opt label=type:unconfined_t \
-  -v ./configs/builder/config.toml:/config.toml:ro \
+  -v ./builder/qcow2/config.toml:/config.toml:ro \
   -v ./output:/output \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   quay.io/centos-bootc/bootc-image-builder:latest \

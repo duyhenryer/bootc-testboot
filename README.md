@@ -74,13 +74,11 @@ base/
 repos/
   hello/                   Go app: HTTP server + systemd unit
     main.go, go.mod, main_test.go
+    rootfs/
+      etc/nginx/nginx.conf Reverse proxy config
+      usr/lib/tmpfiles.d/  App writable directory definitions
 systemd/
   hello.service            Systemd unit files (all apps)
-configs/
-  builder/config.toml      bootc-image-builder (user, partition, kernel)
-  builder/bootc-poc.ovf    OVF descriptor template for OVA packaging
-  os/nginx.conf            Reverse proxy config
-  tmpfiles.d/              App writable directory definitions
 scripts/
   create-image.sh          Unified disk image builder (ami|gce|vmdk|qcow2|raw|vhd)
   create-ova.sh            VMDK + OVF → OVA packaging
@@ -92,12 +90,12 @@ Makefile                   All operations
 
 1. Create `repos/myapp/` with `main.go`, `go.mod`
 2. Add unit file: `systemd/myapp.service`
-3. Add tmpfiles if needed: `configs/tmpfiles.d/myapp.conf`
+3. Add tmpfiles if needed: `repos/myapp/rootfs/usr/lib/tmpfiles.d/myapp.conf`
 4. Add `COPY` + `enable` in `Containerfile`:
    ```dockerfile
    RUN systemctl enable myapp
    ```
-5. Add upstream + location in `configs/os/nginx.conf`
+5. Add upstream + location in `repos/myapp/rootfs/etc/nginx/nginx.conf`
 6. `make build` — auto-discovers `repos/*/` and builds all binaries
 
 ## CI Architecture (Distribution Model)
