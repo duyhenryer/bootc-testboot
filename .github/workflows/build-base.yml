@@ -15,6 +15,10 @@ on:
           - centos-stream10
           - fedora-40
           - fedora-41
+      platforms:
+        description: 'Platforms to build (comma-separated)'
+        required: true
+        default: 'linux/amd64,linux/arm64'
 
 env:
   REGISTRY: ghcr.io
@@ -25,27 +29,64 @@ jobs:
     name: Set build matrix
     runs-on: ubuntu-latest
     outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
       distros: ${{ steps.set.outputs.distros }}
     steps:
       - id: set
         run: |
-          if [ "${{ inputs.distro }}" = "all" ] || [ -z "${{ inputs.distro }}" ]; then
-            echo 'distros=["centos-stream9","centos-stream10","fedora-40","fedora-41"]' >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PLATFORMS="${{ inputs.platforms }}"
+            DISTRO="${{ inputs.distro }}"
           else
-            echo 'distros=["${{ inputs.distro }}"]' >> "$GITHUB_OUTPUT"
+            PLATFORMS="linux/amd64,linux/arm64"
+            DISTRO="all"
           fi
+          
+          if [ "$DISTRO" = "all" ] || [ -z "$DISTRO" ]; then
+            DISTROS=("centos-stream9" "centos-stream10" "fedora-40" "fedora-41")
+          else
+            DISTROS=("$DISTRO")
+          fi
+          
+          printf 'distros=[' >> "$GITHUB_OUTPUT"
+          for i in "${!DISTROS[@]}"; do
+            [ $i -gt 0 ] && printf ',' >> "$GITHUB_OUTPUT"
+            printf '"%s"' "${DISTROS[$i]}" >> "$GITHUB_OUTPUT"
+          done
+          printf ']\n' >> "$GITHUB_OUTPUT"
+
+          MATRIX='{"include":['
+          first=1
+          IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
+          
+          for D in "${DISTROS[@]}"; do
+            for PLATFORM in "${PLATFORM_ARRAY[@]}"; do
+              ARCH="${PLATFORM#linux/}"
+              if [ "$ARCH" = "arm64" ]; then
+                RUNNER="ubuntu-24.04-arm"
+              else
+                RUNNER="ubuntu-latest"
+              fi
+              
+              if [ $first -eq 0 ]; then MATRIX+=","; fi
+              first=0
+              MATRIX+="{\"distro\":\"$D\",\"platform\":\"$PLATFORM\",\"arch\":\"$ARCH\",\"runner\":\"$RUNNER\"}"
+            done
+          done
+          MATRIX+=']}'
+          
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   build-base:
-    name: Build ${{ matrix.distro }}
-    runs-on: ubuntu-latest
+    name: Build ${{ matrix.distro }} (${{ matrix.arch }})
     needs: matrix
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
     strategy:
       fail-fast: false
-      matrix:
-        distro: ${{ fromJson(needs.matrix.outputs.distros) }}
+      matrix: ${{ fromJson(needs.matrix.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v6
 
@@ -54,15 +95,123 @@ jobs:
         with:
           tool-cache: true
 
+      - name: Install skopeo and jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo jq
+
+      - name: Compute semantic version tag (vN)
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="${{ env.BASE_IMAGE }}"
+          EXISTING_TAGS=""
+          if skopeo list-tags "docker://${IMAGE}" >/tmp/tags.json 2>/dev/null; then
+            EXISTING_TAGS=$(jq -r '.Tags[]' /tmp/tags.json 2>/dev/null | grep -oE "^${{ matrix.distro }}-v[0-9]+$" || echo "")
+          fi
+          if [ -z "$EXISTING_TAGS" ]; then
+            NEXT_TAG="v1"
+            echo "No existing tags found. Starting with v1"
+          else
+            HIGHEST_VERSION=$(echo "$EXISTING_TAGS" | sed "s/^${{ matrix.distro }}-v//" | sort -n | tail -n1)
+            NEXT_NUM=$((HIGHEST_VERSION + 1))
+            NEXT_TAG="v${NEXT_NUM}"
+            echo "Highest existing version: v${HIGHEST_VERSION}. Next version: ${NEXT_TAG}"
+          fi
+          echo "version=${NEXT_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Determine Dockerfile path
+        id: path
+        run: |
+          case "${{ matrix.distro }}" in
+            centos-stream9) echo "path=centos/stream9" >> "$GITHUB_OUTPUT" ;;
+            centos-stream10) echo "path=centos/stream10" >> "$GITHUB_OUTPUT" ;;
+            fedora-40) echo "path=fedora/40" >> "$GITHUB_OUTPUT" ;;
+            fedora-41) echo "path=fedora/41" >> "$GITHUB_OUTPUT" ;;
+          esac
+
       - name: Build base image
-        run: make base BASE_DISTRO=${{ matrix.distro }}
+        run: |
+          podman build --platform ${{ matrix.platform }} \
+            -t ${{ env.BASE_IMAGE }}:${{ matrix.distro }}-latest-${{ matrix.arch }} \
+            -t ${{ env.BASE_IMAGE }}:${{ matrix.distro }}-${{ steps.version.outputs.version }}-${{ matrix.arch }} \
+            -f base/${{ steps.path.outputs.path }}/Containerfile base
 
       - name: Login to GHCR
         run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Push base image
+      - name: Push arch-specific base image
         run: |
-          podman push ${{ env.BASE_IMAGE }}-${{ matrix.distro }}:latest
-          podman tag ${{ env.BASE_IMAGE }}-${{ matrix.distro }}:latest \
-            ${{ env.BASE_IMAGE }}-${{ matrix.distro }}:$(date +%Y%m%d)
-          podman push ${{ env.BASE_IMAGE }}-${{ matrix.distro }}:$(date +%Y%m%d)
+          podman push ${{ env.BASE_IMAGE }}:${{ matrix.distro }}-latest-${{ matrix.arch }}
+          podman push ${{ env.BASE_IMAGE }}:${{ matrix.distro }}-${{ steps.version.outputs.version }}-${{ matrix.arch }}
+
+  create-manifest:
+    name: Create multi-platform manifests
+    needs: [matrix, build-base]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to GHCR
+        run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Install skopeo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo jq
+
+      - name: Create and push manifests
+        run: |
+          set -euo pipefail
+          
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PLATFORMS="${{ github.event.inputs.platforms }}"
+          else
+            PLATFORMS="linux/amd64,linux/arm64"
+          fi
+          
+          IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
+          ARCHS=()
+          for PLATFORM in "${PLATFORM_ARRAY[@]}"; do
+            ARCHS+=("${PLATFORM#linux/}")
+          done
+          
+          DIRS_JSON='${{ needs.matrix.outputs.distros }}'
+          DIRS_CLEAN=$(echo "$DIRS_JSON" | sed 's/\[//g; s/\]//g; s/"//g')
+          IFS=',' read -ra DISTROS <<< "$DIRS_CLEAN"
+          
+          for DISTRO in "${DISTROS[@]}"; do
+            echo "=== Processing manifest for $DISTRO ==="
+            IMAGE="${{ env.BASE_IMAGE }}"
+            
+            # Use Skopeo to find the version (e.g. v2) that was just built and tagged with vN-amd64
+            LATEST_ARCH_TAG=""
+            if skopeo list-tags "docker://${IMAGE}" >/tmp/tags.json 2>/dev/null; then
+              LATEST_ARCH_TAG=$(jq -r '.Tags[]' /tmp/tags.json 2>/dev/null | grep -oE "^${DISTRO}-v[0-9]+-${ARCHS[0]}$" | sort -V | tail -n1 || echo "")
+            fi
+            
+            if [ -n "$LATEST_ARCH_TAG" ]; then
+              VERSION_TAG=$(echo "$LATEST_ARCH_TAG" | sed -E "s/^${DISTRO}-(v[0-9]+)-${ARCHS[0]}$/\1/")
+            else
+              echo "Could not find recently pushed arch tags, defaulting to v1"
+              VERSION_TAG="v1"
+            fi
+            
+            for TAG_TYPE in "latest" "$VERSION_TAG"; do
+              MANIFEST_TAG="${DISTRO}-${TAG_TYPE}"
+              echo "Creating manifest for $IMAGE:$MANIFEST_TAG"
+              
+              podman manifest create "$IMAGE:$MANIFEST_TAG"
+              for ARCH in "${ARCHS[@]}"; do
+                MANIFEST_IMAGE="$IMAGE:$MANIFEST_TAG-$ARCH"
+                echo "Adding $MANIFEST_IMAGE to manifest"
+                podman manifest add "$IMAGE:$MANIFEST_TAG" "$MANIFEST_IMAGE"
+              done
+              
+              echo "Pushing manifest $IMAGE:$MANIFEST_TAG"
+              podman manifest push "$IMAGE:$MANIFEST_TAG" "docker://$IMAGE:$MANIFEST_TAG"
+              podman manifest rm "$IMAGE:$MANIFEST_TAG" || true
+            done
+          done
