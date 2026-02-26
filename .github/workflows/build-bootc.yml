@@ -128,7 +128,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        format: [qcow2, ami]
+        format: [qcow2, ami, raw, vmdk, anaconda-iso]
     steps:
       - uses: actions/checkout@v6
 
