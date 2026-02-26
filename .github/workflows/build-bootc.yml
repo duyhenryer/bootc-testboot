@@ -314,6 +314,7 @@ jobs:
             -v $(pwd)/output:/output \
             quay.io/centos-bootc/bootc-image-builder:latest \
             --type ${{ matrix.format }} \
+            --config /config/builder/config.toml \
             --chown $(id -u):$(id -g) \
             $TARGET_IMAGE
 
