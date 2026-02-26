@@ -79,6 +79,13 @@ gcloud compute images create "bootc-centos9-custom-v3" \
     --source-uri="gs://my-gcp-bucket/bootc-centos9.tar.gz" \
     --guest-os-features=UEFI_COMPATIBLE,VIRTIO_SCSI_MULTIQUEUE \
     --description="Bootc OS Custom Image v3"
+
+# 6. Create a VM Instance using the newly registered Image
+gcloud compute instances create "vm-bootc-centos9-testing" \
+    --project="my-project-id" \
+    --zone="asia-southeast1-a" \
+    --machine-type="e2-medium" \
+    --image="bootc-centos9-custom-v3"
 ```
 
 ---
