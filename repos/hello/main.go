@@ -54,7 +54,7 @@ func main() {
 func handleRoot(w http.ResponseWriter, r *http.Request) {
 	hostname, _ := os.Hostname()
 	resp := map[string]string{
-		"message":  "Hello World",
+		"message":  "hello bootc",
 		"hostname": hostname,
 		"version":  version,
 	}
