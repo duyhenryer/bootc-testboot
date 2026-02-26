@@ -20,8 +20,8 @@ func TestHandleRoot(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if resp["message"] != "Hello World" {
-		t.Fatalf("expected Hello World, got %s", resp["message"])
+	if resp["message"] != "hello bootc" {
+		t.Fatalf("expected hello bootc, got %s", resp["message"])
 	}
 	if resp["version"] != "dev" {
 		t.Fatalf("expected dev, got %s", resp["version"])
