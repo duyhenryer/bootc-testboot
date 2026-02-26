@@ -145,6 +145,7 @@ jobs:
             --privileged \
             --pull=newer \
             --security-opt label=type:unconfined_t \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
             -v $(pwd)/configs:/config \
             -v $(pwd)/output:/output \
             quay.io/centos-bootc/bootc-image-builder:latest \
