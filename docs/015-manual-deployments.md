@@ -12,10 +12,10 @@ For example, to get the `qcow2` image for `centos-stream9`:
 
 ```bash
 # Pull the OCI artifact container
-podman pull ghcr.io/<your-org>/bootc-testboot:centos-stream9-qcow2-v1
+podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-qcow2:v3
 
 # Create a temporary container
-CONTAINER_ID=$(podman create ghcr.io/<your-org>/bootc-testboot:centos-stream9-qcow2-v1)
+CONTAINER_ID=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-qcow2:v3)
 
 # Extract the disk file from the container to your local filesystem
 podman cp $CONTAINER_ID:/output/qcow2/disk.qcow2 ./my-disk.qcow2
@@ -54,20 +54,38 @@ aws ec2 register-image \
 
 ## 3. Deploying to Google Cloud Platform (GCE)
 
-GCP requires a `.tar.gz` file containing a `disk.raw` file formatted appropriately. The `bootc-image-builder --type gce` generates exactly this tarball.
+GCP requires a `.tar.gz` file containing exactly one file named `disk.raw`. Because our CI generates standard `raw` distributions inside an OCI container, you must pull the `raw` package, extract it, compress it correctly, and then upload it.
 
 **Prerequisites:** `gcloud` CLI and `gsutil`.
 
 ```bash
-# 1. Upload the extracted tar.gz to Google Cloud Storage
-gsutil cp ./image.tar.gz gs://my-gcp-bucket/bootc-centos9.tar.gz
+# 1. Pull the raw artifact image
+podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-raw:v3
 
-# 2. Create a GCE Image from the tarball
-gcloud compute images create "bootc-centos9-custom" \
+# 2. Extract the raw disk using a dummy container
+ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-raw:v3 /bin/true)
+podman cp $ctr:/image/disk.raw ./disk.raw
+podman rm $ctr
+
+# 3. Compress it into the exact tarball format Google expects
+tar -Szcvf bootc-centos9.tar.gz disk.raw
+
+# 4. Upload the tarball to Google Cloud Storage
+gsutil cp ./bootc-centos9.tar.gz gs://my-gcp-bucket/bootc-centos9.tar.gz
+
+# 5. Create a Custom GCE Image from the tarball
+gcloud compute images create "bootc-centos9-custom-v3" \
     --project="my-project-id" \
     --source-uri="gs://my-gcp-bucket/bootc-centos9.tar.gz" \
     --guest-os-features=UEFI_COMPATIBLE,VIRTIO_SCSI_MULTIQUEUE \
-    --description="Manual bootc OS upload"
+    --description="Bootc OS Custom Image v3"
+
+# 6. Create a VM Instance using the newly registered Image
+gcloud compute instances create "vm-bootc-centos9-testing" \
+    --project="my-project-id" \
+    --zone="asia-southeast1-a" \
+    --machine-type="e2-medium" \
+    --image="bootc-centos9-custom-v3"
 ```
 
 ---
