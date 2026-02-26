@@ -60,6 +60,46 @@ flowchart LR
 
 ---
 
+## Fixed Directory Layout (FHS) & Core Symlinks
+
+`bootc/ostree` enforces a strict directory layout to resolve the conflict between the standard Linux Filesystem Hierarchy Standard (FHS) and the need for an immutable OS core. 
+
+### The Persistence Dilemma
+
+bootc divides the root filesystem into two primary zones:
+1. `/usr` — **Immutable**, read-only, managed entirely by ostree container images.
+2. `/var` — **Mutable**, persistent, never touched by ostree during upgrades.
+
+**The Problem:** According to FHS, directories like `/home` or `/mnt` sit at the root (`/`). However, user data must persist across OS updates. If `/home` were managed normally, OS upgrades would either wipe it or conflict with immutability.
+
+**The Solution:** ostree moves the actual data into the persistent `/var` partition and places **symlinks** at the root level pointing to `/var`. 
+
+### Directory States & Symlinks Table
+
+You **must not** attempt to break these symlinks or change the root layout.
+
+| Path | Type | State / Target | Reason / Notes |
+|------|------|----------------|----------------|
+| `/usr` | Dir | Read-only (immutable) | Managed solely by `ostree`. Contains binaries. |
+| `/etc` | Dir | Writable | 3-way merged on upgrade. |
+| `/var` | Dir | Writable | Persistent across updates. Data survives here. |
+| `/sysroot` | Dir | `ostree` internal | **Do not touch**. Underlying physical state. |
+| `/boot` | Dir | Managed | Handled by the bootloader. |
+| `/home` | Symlink | `→ /var/home` | User data must persist. |
+| `/root` | Symlink | `→ /var/roothome` | Root home directory must persist. |
+| `/mnt` | Symlink | `→ /var/mnt` | Temporary mount points. |
+| `/srv` | Symlink | `→ /var/srv` | Service data. |
+| `/opt` | Dir/Symlink | `→ /var/opt` (varies) | Often read-only unless specifically symlinked to `/var`. |
+
+### Upgrade Behavior
+
+When `bootc upgrade` applies a new OS image:
+1. `/usr` is **completely replaced** by the new image's payload.
+2. `/etc` undergoes a **3-way merge** (base vs local changes vs new base).
+3. `/var` is **left completely alone** → `/var/home` and `/var/roothome` are safe.
+
+---
+
 ## /usr: READ-ONLY When Deployed
 
 ### Contents
@@ -81,8 +121,8 @@ Default: **regular directory** (part of image). Base images typically keep it th
 ### Practical: Put Config in /usr
 
 ```dockerfile
-# Good: config in /usr (immutable)
-COPY configs/nginx.conf /usr/share/nginx/nginx.conf
+# Good: config in /usr (immutable) via rootfs overlay
+COPY repos/hello/rootfs/ /
 RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf
 ```
 
@@ -111,11 +151,11 @@ Metadata (uid, gid, xattrs) counts as "modified"—changing any of these blocks 
 Avoid editing main config files. Use drop-ins instead:
 
 ```dockerfile
-# Good: drop-in, less drift
-COPY configs/sshd-hardening.conf /etc/ssh/sshd_config.d/99-hardening.conf
+# Good: drop-in, less drift (placed inside base/rootfs directory tree)
+COPY base/rootfs/ /
 
 # Risky: editing main file; 3-way merge can conflict
-# COPY configs/sshd_config /etc/ssh/sshd_config
+# COPY rootfs/etc/ssh/sshd_config /etc/ssh/sshd_config
 ```
 
 ### Option: Transient /etc
@@ -153,7 +193,7 @@ Pre-create directories needed by services:
 
 ```dockerfile
 # tmpfiles.d (bootc container lint warns if missing for /var dirs)
-COPY apps/hello/hello-tmpfiles.conf /usr/lib/tmpfiles.d/hello.conf
+COPY repos/hello/rootfs/ /
 ```
 
 ```conf
@@ -296,11 +336,8 @@ flowchart TB
 # Pre-built binary in /usr (read-only when deployed)
 COPY output/bin/ /usr/bin/
 
-# systemd unit with StateDirectory (auto-creates /var/lib/hello)
-COPY apps/hello/hello.service /usr/lib/systemd/system/hello.service
-
-# Optional: extra /var dirs via tmpfiles.d
-COPY apps/hello/hello-tmpfiles.conf /usr/lib/tmpfiles.d/hello.conf
+# Apps ship entirely within their rootfs overlay (binaries, services, tmpfiles)
+COPY repos/hello/rootfs/ /
 
 RUN systemctl enable hello
 ```
@@ -308,16 +345,16 @@ RUN systemctl enable hello
 ### Example 2: Config in /usr, Symlink in /etc
 
 ```dockerfile
-# Immutable config in /usr
-COPY configs/nginx.conf /usr/share/nginx/nginx.conf
+# Immutable config in /usr via rootfs overlay
+COPY repos/hello/rootfs/ /
 RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf
 ```
 
 ### Example 3: Drop-In for /etc
 
 ```dockerfile
-# Avoid editing main config; use drop-in
-COPY configs/sshd-hardening.conf /etc/ssh/sshd_config.d/99-hardening.conf
+# Avoid editing main config; use drop-in via rootfs
+COPY base/rootfs/ /
 ```
 
 ### Example 4: /opt Package Needing Writable Dir

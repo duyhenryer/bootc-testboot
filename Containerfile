@@ -22,21 +22,12 @@ RUN dnf install -y \
 # --- Pre-built app binaries (from output/bin/) ---
 COPY output/bin/ /usr/bin/
 
-# --- Systemd units (all app services) ---
-COPY systemd/ /usr/lib/systemd/system/
+# --- App Configurations (Rootfs Overlay) ---
+COPY bootc/apps/*/rootfs/ /
+COPY bootc/services/*/rootfs/ /
 
-# --- App tmpfiles.d (writable dirs for app data) ---
-COPY configs/tmpfiles.d/ /usr/lib/tmpfiles.d/
-
-# --- OS-level tmpfiles.d (satisfy bootc lint) ---
-COPY configs/os/bootc-poc-tmpfiles.conf /usr/lib/tmpfiles.d/bootc-poc.conf
-
-# --- nginx: config in /usr for immutability ---
-COPY configs/os/nginx.conf /usr/share/nginx/nginx.conf
+# --- nginx: immutability symlink ---
 RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf
-
-# --- ECR credential helper config ---
-COPY configs/os/containers-auth.json /etc/containers/auth.json
 
 # --- App firewall rules ---
 RUN firewall-offline-cmd --zone=public \

@@ -6,8 +6,8 @@ on:
     paths:
       - "Containerfile"
       - "repos/**"
-      - "systemd/**"
-      - "configs/**"
+      - "base/**"
+      - "bootc/**"
   workflow_dispatch:
     inputs:
       base_distro:
@@ -310,11 +310,11 @@ jobs:
             --privileged \
             --security-opt label=type:unconfined_t \
             -v /var/lib/containers/storage:/var/lib/containers/storage \
-            -v $(pwd)/configs:/config \
+            -v $(pwd)/builder:/builder \
             -v $(pwd)/output:/output \
             quay.io/centos-bootc/bootc-image-builder:latest \
             --type ${{ matrix.format }} \
-            --config /config/builder/config.toml \
+            --config /builder/${{ matrix.format }}/config.toml \
             --chown $(id -u):$(id -g) \
             $TARGET_IMAGE
 

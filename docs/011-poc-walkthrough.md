@@ -30,19 +30,23 @@ cd bootc-testboot
 
 ```
 bootc-testboot/
-├── apps/
+├── base/
+│   ├── rootfs/                # Base OS config overly (SSH, sysctl, systemd)
+│   └── centos/stream9/Containerfile
+├── repos/
 │   └── hello/                 # Go HTTP hello world
 │       ├── main.go
-│       ├── main_test.go
 │       ├── go.mod
-│       ├── hello.service      # systemd unit
-│       └── hello-tmpfiles.conf
+│       └── rootfs/            # App config overlay
+│           ├── etc/nginx/nginx.conf
+│           ├── usr/lib/systemd/system/hello.service
+│           └── usr/lib/tmpfiles.d/hello.conf
 ├── output/                    # (gitignored) build artifacts
 │   └── bin/                   # pre-built Go binaries
-├── configs/
-│   ├── nginx.conf
-│   ├── sshd-hardening.conf
-│   └── containers-auth.json
+├── builder/                   # bootc-image-builder artifacts setup
+│   ├── qcow2/config.toml
+│   ├── ami/config.toml
+│   └── README.md
 ├── scripts/
 │   ├── create-ami.sh
 │   ├── create-vmdk.sh
@@ -56,8 +60,7 @@ bootc-testboot/
 │   ├── build-bootc.yml
 │   ├── create-ami.yml
 │   └── create-ova.yml
-├── Containerfile              # Single-stage: COPY pre-built binaries + configs
-├── config.toml                # bootc-image-builder customizations
+├── Containerfile              # Layer 2: app image (COPY bootc/apps/*/rootfs)
 └── Makefile
 ```
 
@@ -72,7 +75,7 @@ make test
 **Expected output:**
 
 ```
-==> Testing apps/hello/
+==> Testing repos/hello/
 === RUN   TestHandleRoot
 --- PASS: TestHandleRoot (0.00s)
 === RUN   TestHandleHealth
@@ -91,8 +94,8 @@ make build
 
 This runs two steps automatically:
 
-1. **`make apps`** — compiles all Go apps under `apps/*/` to `output/bin/` (static binaries, CGO disabled).
-2. **`podman build`** — assembles the OS image from a single `FROM quay.io/fedora/fedora-bootc:41`, copying pre-built binaries + configs.
+1. **`make apps`** — compiles all Go apps under `repos/*/` to `output/bin/` (static binaries, CGO disabled).
+2. **`podman build`** — assembles the OS image from the base OCI image, copying pre-built binaries + `bootc/apps/*/rootfs/` and `bootc/services/*/rootfs/` overlays.
 
 **Expected output:**
 
@@ -330,17 +333,18 @@ This is by design: DB migrations and app state in `/var` must be handled separat
 
 ## 12. Adding a New App
 
-Example: add `apps/api/` alongside `apps/hello/`.
+Example: add `repos/api/` alongside `repos/hello/`.
 
 ### Step 1: Create app layout
 
 ```
-apps/api/
+repos/api/
 ├── main.go
 ├── main_test.go
 ├── go.mod
-├── api.service
-└── api-tmpfiles.conf  (if needed)
+└── rootfs/
+    ├── usr/lib/systemd/system/api.service
+    └── usr/lib/tmpfiles.d/api.conf
 ```
 
 ### Step 2: Update Containerfile
@@ -348,8 +352,7 @@ apps/api/
 Add COPY + enable lines (the binary is auto-built by `make apps`):
 
 ```dockerfile
-COPY apps/api/api.service /usr/lib/systemd/system/api.service
-COPY apps/api/api-tmpfiles.conf /usr/lib/tmpfiles.d/api.conf
+COPY bootc/apps/api/rootfs/ /
 RUN systemctl enable api
 ```
 

@@ -14,8 +14,8 @@ flowchart TB
         direction TB
         K["Linux kernel (/usr/lib/modules)"]
         U["Userspace (systemd, nginx, packages)"]
-        A["Apps (Go binaries, systemd units)"]
-        C["Configs (nginx.conf, sshd, etc.)"]
+        A["Apps (Go binaries, systemd units via rootfs)"]
+        C["Configs (nginx.conf, sshd, etc. via rootfs)"]
     end
 
     subgraph Build["Build Time"]
@@ -46,8 +46,8 @@ flowchart TB
 |-------|----------|-----------------|
 | **Kernel** | Linux kernel + modules | `/usr/lib/modules` (from base image) |
 | **Userspace** | systemd, coreutils, packages | `RUN dnf install ...` |
-| **Apps** | Binaries + systemd units | `COPY apps/*/` → `/usr/bin`, `/usr/lib/systemd/system` |
-| **Configs** | nginx, sshd, etc. | `/usr/share/` or `/etc/` (with drop-ins) |
+| **Apps** | Binaries + systemd units | `COPY bootc/apps/*/rootfs/` → `/usr/bin`, `/usr/lib/systemd/system` |
+| **Configs** | nginx, sshd, etc. | `COPY base/rootfs/` \u0026 `COPY bootc/services/*/rootfs/` |
 
 ---
 
@@ -56,9 +56,9 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph Source["Source"]
-        APPS[apps/hello/\napps/api/]
+        APPS[repos/hello/\nrepos/api/]
         CF[Containerfile]
-        CONFIGS[configs/]
+        CONFIGS[base/rootfs/]
     end
 
     subgraph AppBuild["App Build"]
@@ -95,11 +95,12 @@ flowchart LR
 ```
 make apps                          make build
     │                                  │
-    ├─ apps/hello/ → output/bin/hello  ├─ Containerfile (single FROM fedora-bootc:41)
-    ├─ apps/api/   → output/bin/api    │    ├─ RUN dnf install nginx cloud-init ...
+    ├─ repos/hello/ → output/bin/      ├─ Containerfile (single FROM fedora-bootc:41)
+    ├─ repos/api/   → output/bin/      │    ├─ RUN dnf install nginx cloud-init ...
     └─ ...                             │    ├─ COPY output/bin/ /usr/bin/
-                                       │    ├─ COPY apps/hello/hello.service ...
-                                       │    ├─ COPY configs/nginx.conf ...
+                                       │    ├─ COPY base/rootfs /
+                                       │    ├─ COPY bootc/apps/*/rootfs/ /
+                                       │    ├─ COPY bootc/services/*/rootfs/ /
                                        │    └─ RUN bootc container lint
                                        │
                                        └─ podman push → ghcr.io/…
@@ -181,8 +182,8 @@ On reboot, the bootloader atomically switches to the staged deployment. Rollback
 ```mermaid
 flowchart LR
     subgraph Repo["Repository"]
-        A[apps/hello/]
-        B[apps/newapp/]
+        A[repos/hello/]
+        B[repos/newapp/]
     end
 
     subgraph Image["Container Image"]
@@ -201,12 +202,12 @@ flowchart LR
 
 ### Adding a New App
 
-1. Create `apps/newapp/` with `main.go`, `go.mod`, `newapp.service`, `newapp-tmpfiles.conf`
-2. Add COPY + enable lines in Containerfile (binary auto-built by `make apps`)
+1. Create `repos/newapp/` with `main.go`, `go.mod`
+2. Create `bootc/apps/newapp/rootfs/` mimicking the OS structure.
 3. Add `RUN systemctl enable newapp`
-4. `make build` (auto-discovers all `apps/*/` dirs)
+4. `make build` (auto-discovers all `repos/*/` dirs for compiling bins)
 
-All apps share the same OS image; scaling = more `apps/` dirs + COPY lines.
+All apps share the same OS image; scaling = more `bootc/apps/` dirs + COPY lines.
 
 ---
 
@@ -247,7 +248,7 @@ flowchart TB
 | **nginx** | Already present; add more vhosts/config |
 | **redis** | `RUN dnf install redis` + `redis.service` |
 | **rabbitmq** | `RUN dnf install rabbitmq-server` + systemd unit |
-| **Many apps** | `apps/api/`, `apps/worker/`, `apps/web/`; same Containerfile pattern |
+| **Many apps** | `repos/api/`, `repos/worker/`, `repos/web/`; same Containerfile pattern |
 
 ### Deployment Targets
 

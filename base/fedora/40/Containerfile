@@ -11,15 +11,8 @@ RUN dnf install -y \
     && dnf clean all \
     && rm -rf /var/cache/{dnf,ldconfig} /var/log/dnf*
 
-# --- Production tuning (from base/shared/) ---
-COPY base/shared/sysctl-tuning.conf   /usr/lib/sysctl.d/99-production.conf
-COPY base/shared/systemd-limits.conf  /etc/systemd/system.conf.d/99-limits.conf
-COPY base/shared/journald.conf        /etc/systemd/journald.conf.d/99-production.conf
-COPY base/shared/sshd-hardening.conf  /etc/ssh/sshd_config.d/99-hardening.conf
-COPY base/shared/chrony-custom.conf   /etc/chrony.d/99-custom.conf
-COPY base/shared/base-tmpfiles.conf   /usr/lib/tmpfiles.d/base-production.conf
-COPY base/shared/dhcpcd-sysusers.conf  /usr/lib/sysusers.d/dhcpcd.conf
-
+# --- Production tuning (Rootfs Overlay) ---
+COPY base/rootfs/ /
 # --- Firewall base rules ---
 RUN firewall-offline-cmd --zone=public --add-port=22/tcp
 
