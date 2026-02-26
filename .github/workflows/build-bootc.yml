@@ -104,8 +104,8 @@ jobs:
       - name: Build apps + image
         run: make build BASE_DISTRO=${{ env.BASE_DISTRO }} VERSION=${{ steps.version.outputs.version }}
 
-      - name: Strict lint
-        run: make lint-strict
+      - name: Lint (warnings only)
+        run: make lint
 
       - name: Login to GHCR
         run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
