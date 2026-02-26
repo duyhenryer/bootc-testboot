@@ -136,7 +136,7 @@ jobs:
           podman build --platform ${{ matrix.platform }} \
             -t ${{ env.BASE_IMAGE }}:${{ matrix.distro }}-latest-${{ matrix.arch }} \
             -t ${{ env.BASE_IMAGE }}:${{ matrix.distro }}-${{ steps.version.outputs.version }}-${{ matrix.arch }} \
-            -f base/${{ steps.path.outputs.path }}/Containerfile base
+            -f base/${{ steps.path.outputs.path }}/Containerfile .
 
       - name: Login to GHCR
         run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
