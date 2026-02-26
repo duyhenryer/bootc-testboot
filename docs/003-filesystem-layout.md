@@ -60,18 +60,43 @@ flowchart LR
 
 ---
 
-## Fixed Directory Layout (FHS)
+## Fixed Directory Layout (FHS) & Core Symlinks
 
-`bootc/ostree` has a fixed directory layout according to the Filesystem Hierarchy Standard (FHS), and some paths are hardcoded or statically mounted. You **should not** rename or move the `/` structure.
+`bootc/ostree` enforces a strict directory layout to resolve the conflict between the standard Linux Filesystem Hierarchy Standard (FHS) and the need for an immutable OS core. 
 
-| Directory | State |
-|-----------|-------|
-| `/usr` | Read-only (immutable), managed by `ostree` |
-| `/etc` | Writable, 3-way merged on upgrade |
-| `/var` | Writable, persistent across updates |
-| `/sysroot` | `ostree` internal, **do not touch** |
-| `/boot` | Managed by bootloader |
-| `/home` | Symlink → `/var/home` |
+### The Persistence Dilemma
+
+bootc divides the root filesystem into two primary zones:
+1. `/usr` — **Immutable**, read-only, managed entirely by ostree container images.
+2. `/var` — **Mutable**, persistent, never touched by ostree during upgrades.
+
+**The Problem:** According to FHS, directories like `/home` or `/mnt` sit at the root (`/`). However, user data must persist across OS updates. If `/home` were managed normally, OS upgrades would either wipe it or conflict with immutability.
+
+**The Solution:** ostree moves the actual data into the persistent `/var` partition and places **symlinks** at the root level pointing to `/var`. 
+
+### Directory States & Symlinks Table
+
+You **must not** attempt to break these symlinks or change the root layout.
+
+| Path | Type | State / Target | Reason / Notes |
+|------|------|----------------|----------------|
+| `/usr` | Dir | Read-only (immutable) | Managed solely by `ostree`. Contains binaries. |
+| `/etc` | Dir | Writable | 3-way merged on upgrade. |
+| `/var` | Dir | Writable | Persistent across updates. Data survives here. |
+| `/sysroot` | Dir | `ostree` internal | **Do not touch**. Underlying physical state. |
+| `/boot` | Dir | Managed | Handled by the bootloader. |
+| `/home` | Symlink | `→ /var/home` | User data must persist. |
+| `/root` | Symlink | `→ /var/roothome` | Root home directory must persist. |
+| `/mnt` | Symlink | `→ /var/mnt` | Temporary mount points. |
+| `/srv` | Symlink | `→ /var/srv` | Service data. |
+| `/opt` | Dir/Symlink | `→ /var/opt` (varies) | Often read-only unless specifically symlinked to `/var`. |
+
+### Upgrade Behavior
+
+When `bootc upgrade` applies a new OS image:
+1. `/usr` is **completely replaced** by the new image's payload.
+2. `/etc` undergoes a **3-way merge** (base vs local changes vs new base).
+3. `/var` is **left completely alone** → `/var/home` and `/var/roothome` are safe.
 
 ---
 
