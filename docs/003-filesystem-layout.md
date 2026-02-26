@@ -60,6 +60,21 @@ flowchart LR
 
 ---
 
+## Fixed Directory Layout (FHS)
+
+`bootc/ostree` has a fixed directory layout according to the Filesystem Hierarchy Standard (FHS), and some paths are hardcoded or statically mounted. You **should not** rename or move the `/` structure.
+
+| Directory | State |
+|-----------|-------|
+| `/usr` | Read-only (immutable), managed by `ostree` |
+| `/etc` | Writable, 3-way merged on upgrade |
+| `/var` | Writable, persistent across updates |
+| `/sysroot` | `ostree` internal, **do not touch** |
+| `/boot` | Managed by bootloader |
+| `/home` | Symlink → `/var/home` |
+
+---
+
 ## /usr: READ-ONLY When Deployed
 
 ### Contents
