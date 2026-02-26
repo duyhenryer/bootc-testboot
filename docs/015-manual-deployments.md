@@ -64,7 +64,7 @@ podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-raw:v3
 
 # 2. Extract the raw disk using a dummy container
 ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-raw:v3 /bin/true)
-podman cp $ctr:/raw/disk.raw ./disk.raw
+podman cp $ctr:/image/disk.raw ./disk.raw
 podman rm $ctr
 
 # 3. Compress it into the exact tarball format Google expects
