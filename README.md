@@ -144,6 +144,23 @@ graph TD
 
 > For deploying these generated distribution images manually to AWS, GCP, or VMware, refer to [Manual Deployments Guide](docs/015-manual-deployments.md).
 
+### Auditing Created Artifact Images
+Because artifact distribution images are packaged using `scratch` (meaning they do not contain a shell or OS utilities like `ls`), you cannot use `podman run` to inspect them directly. Instead, you can audit the contents of an artifact image by creating a dummy container and exporting its filesystem hierarchy using `tar`.
+
+```bash
+IMAGE="ghcr.io/duyhenryer/bootc-testboot-centos-stream9-vmdk:latest-amd64"
+
+# 1. Create a container with a dummy /bin/true entrypoint to bypass the scratch image's lack of one
+ctr=$(podman create $IMAGE /bin/true)
+
+# 2. Export the container's entire filesystem as a tar stream and list (-t) the files verbosely (-v)
+echo "=== File Inventory of the OCI Artifact ==="
+podman export $ctr | tar -tv
+
+# 3. Clean up the dummy container
+podman rm $ctr
+```
+
 ## Base Image Tuning
 
 All base images include production hardening:
