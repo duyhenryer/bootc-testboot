@@ -68,8 +68,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Free disk space
-        run: rm -rf /opt/hostedtoolcache
+      - name: Free up some disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
+        with:
+          tool-cache: true
 
       - uses: actions/setup-go@v5
         with:
@@ -130,8 +132,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Free disk space
-        run: rm -rf /opt/hostedtoolcache
+      - name: Free up some disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
+        with:
+          tool-cache: true
 
       - name: Build artifact (${{ matrix.format }})
         run: |

@@ -49,8 +49,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Free disk space
-        run: rm -rf /opt/hostedtoolcache
+      - name: Free up some disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
+        with:
+          tool-cache: true
 
       - name: Build base image
         run: make base BASE_DISTRO=${{ matrix.distro }}
