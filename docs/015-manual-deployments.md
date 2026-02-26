@@ -12,10 +12,10 @@ For example, to get the `qcow2` image for `centos-stream9`:
 
 ```bash
 # Pull the OCI artifact container
-podman pull ghcr.io/<your-org>/bootc-testboot:centos-stream9-qcow2-v1
+podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-qcow2:v3
 
 # Create a temporary container
-CONTAINER_ID=$(podman create ghcr.io/<your-org>/bootc-testboot:centos-stream9-qcow2-v1)
+CONTAINER_ID=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-qcow2:v3)
 
 # Extract the disk file from the container to your local filesystem
 podman cp $CONTAINER_ID:/output/qcow2/disk.qcow2 ./my-disk.qcow2
@@ -60,10 +60,10 @@ GCP requires a `.tar.gz` file containing exactly one file named `disk.raw`. Beca
 
 ```bash
 # 1. Pull the raw artifact image
-podman pull ghcr.io/<your-org>/bootc-testboot-centos-stream9-raw:v3-amd64
+podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-raw:v3
 
 # 2. Extract the raw disk using a dummy container
-ctr=$(podman create ghcr.io/<your-org>/bootc-testboot-centos-stream9-raw:v3-amd64 /bin/true)
+ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-raw:v3 /bin/true)
 podman cp $ctr:/raw/disk.raw ./disk.raw
 podman rm $ctr
 
