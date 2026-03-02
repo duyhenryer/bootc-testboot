@@ -4,13 +4,6 @@
 # =============================================================================
 FROM quay.io/centos-bootc/centos-bootc:stream10
 
-# --- Fix resolv.conf for build compatibility ---
-# Some bootc base images ship /etc/resolv.conf as a symlink managed by
-# systemd-resolved. This can be a dangling symlink at build time since
-# /run/... does not exist. Remove it so buildah can inject DNS config.
-# At boot, systemd-resolved + NetworkManager will recreate it correctly.
-RUN rm -f /etc/resolv.conf
-
 # --- System packages ---
 RUN dnf install -y epel-release \
     && dnf install -y \
@@ -18,9 +11,6 @@ RUN dnf install -y epel-release \
         cloud-init openssh-server firewalld chrony \
     && dnf clean all \
     && rm -rf /var/cache/{dnf,ldconfig} /var/log/dnf*
-
-# --- Restore resolv.conf symlink (systemd-resolved convention) ---
-RUN ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
 # --- Production tuning (Rootfs Overlay) ---
 COPY base/rootfs/ /
@@ -33,7 +23,9 @@ RUN useradd -r -m -d /var/home/appuser -s /bin/bash appuser && \
     usermod -aG wheel appuser
 
 # --- Enable base services ---
-RUN systemctl enable cloud-init sshd firewalld chronyd systemd-resolved NetworkManager
+# CentOS/RHEL: DNS is managed by NetworkManager's internal DNS plugin,
+# not systemd-resolved (which is not shipped in the minimal bootc image).
+RUN systemctl enable cloud-init sshd firewalld chronyd NetworkManager
 
 # --- Validate ---
 LABEL containers.bootc=1

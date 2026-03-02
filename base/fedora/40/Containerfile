@@ -4,23 +4,12 @@
 # =============================================================================
 FROM quay.io/fedora/fedora-bootc:40
 
-# --- Fix resolv.conf for build compatibility ---
-# fedora-bootc ships /etc/resolv.conf as a dangling symlink to
-# /run/systemd/resolve/stub-resolv.conf (does not exist at build time).
-# Buildah cannot bind-mount its resolv.conf over a dangling symlink.
-# Remove it so buildah can inject DNS config normally during build.
-# At boot, systemd-resolved + NetworkManager will recreate it correctly.
-RUN rm -f /etc/resolv.conf
-
 # --- System packages ---
 RUN dnf install -y \
         htop curl jq lsof tcpdump sysstat vim-minimal \
         cloud-init openssh-server firewalld chrony \
     && dnf clean all \
     && rm -rf /var/cache/{dnf,ldconfig} /var/log/dnf*
-
-# --- Restore resolv.conf symlink (bootc/systemd-resolved convention) ---
-RUN ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
 # --- Production tuning (Rootfs Overlay) ---
 COPY base/rootfs/ /
