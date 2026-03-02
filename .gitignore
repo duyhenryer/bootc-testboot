@@ -26,3 +26,5 @@ output/
 *.img
 *.vmdk
 
+# Local Docs
+build-local-vi.md

@@ -14,6 +14,7 @@ RUN dnf install -y epel-release \
 
 # --- Production tuning (Rootfs Overlay) ---
 COPY base/rootfs/ /
+
 # --- Firewall base rules ---
 RUN firewall-offline-cmd --zone=public --add-port=22/tcp
 
@@ -22,7 +23,9 @@ RUN useradd -r -m -d /var/home/appuser -s /bin/bash appuser && \
     usermod -aG wheel appuser
 
 # --- Enable base services ---
-RUN systemctl enable cloud-init sshd firewalld chronyd
+# CentOS/RHEL: DNS is managed by NetworkManager's internal DNS plugin,
+# not systemd-resolved (which is not shipped in the minimal bootc image).
+RUN systemctl enable cloud-init sshd firewalld chronyd NetworkManager
 
 # --- Validate ---
 LABEL containers.bootc=1

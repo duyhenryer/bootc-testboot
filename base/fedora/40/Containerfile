@@ -13,6 +13,7 @@ RUN dnf install -y \
 
 # --- Production tuning (Rootfs Overlay) ---
 COPY base/rootfs/ /
+
 # --- Firewall base rules ---
 RUN firewall-offline-cmd --zone=public --add-port=22/tcp
 
@@ -21,7 +22,7 @@ RUN useradd -r -m -d /var/home/appuser -s /bin/bash appuser && \
     usermod -aG wheel appuser
 
 # --- Enable base services ---
-RUN systemctl enable cloud-init sshd firewalld chronyd
+RUN systemctl enable cloud-init sshd firewalld chronyd systemd-resolved NetworkManager
 
 # --- Validate ---
 LABEL containers.bootc=1

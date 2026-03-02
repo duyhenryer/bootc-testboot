@@ -1,4 +1,4 @@
-# bootc-image-builder customizations
+# bootc-image-builder customizations for QCOW2
 # Docs: https://github.com/osbuild/bootc-image-builder#-build-config
 
 [[customizations.user]]
@@ -13,7 +13,7 @@ minsize = "10 GiB"
 
 [[customizations.filesystem]]
 mountpoint = "/var/data"
-minsize = "50 GiB"
+minsize = "5 GiB"
 
 [customizations.kernel]
 append = "console=tty0 console=ttyS0,115200n8"
