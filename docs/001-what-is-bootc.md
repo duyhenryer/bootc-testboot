@@ -1,22 +1,17 @@
-# What is bootc?
+# What is Bootc?
 
-> *Source: [bootc Introduction](https://bootc-dev.github.io/bootc/intro.html)*
+Bootc is a technology that enables transactional, in-place operating system updates using OCI/Docker container images by using bootable containers (container images that include the Kernel). It applies the successful container layering model to bootable host systems, using standard OCI/Docker containers as a transport and delivery format for base operating system updates.
 
-bootc enables **transactional, in-place operating system updates** using OCI/Docker container images. It is the key component in the broader mission of [bootable containers](https://containers.github.io/bootable/).
+![bootc-system-update](../images/bootc-system-update.png)
 
----
 
-## The Mission: OCI Containers as Transport for OS Updates
+## How do do you build Bootc images?
 
-The original Docker container model of using "layers" to model applications has been extremely successful. bootc applies the same technique for **bootable host systems**—using standard OCI/Docker containers as a **transport and delivery format** for base operating system updates.
+Building a bootc image follows a process similar to creating a traditional container image, with an additional extra steps if you need a installable OS asset.
 
-```mermaid
-flowchart LR
-    A[OCI/Docker Image] --> B[Transport]
-    B --> C[Registry]
-    C --> D[Target Machine]
-    D --> E[Native Boot]
-```
+0. Prepare the Containerfile that describe your image and the associated files
+1. Build the Container image using standard tools
+2. Create installable artifacts (optional). If you want to deploy on fresh hardware or a cloud instance (e.g., bare metal, VM, or cloud provider image), use `bootc-image-builder` to produce installable formats (ISO,RAW,VMDK,AMI,...)
 
 ---
 
