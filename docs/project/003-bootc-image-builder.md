@@ -109,9 +109,10 @@ sudo podman pull quay.io/fedora/fedora-bootc:41
 
 mkdir -p output
 
+sudo podman pull quay.io/fedora/fedora-bootc:41
+
 sudo podman run \
   --rm \
-  -it \
   --privileged \
   --pull=newer \
   --security-opt label=type:unconfined_t \
@@ -120,11 +121,15 @@ sudo podman run \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   quay.io/centos-bootc/bootc-image-builder:latest \
   --type qcow2 \
+  --rootfs ext4 \
   --use-librepo=True \
   quay.io/fedora/fedora-bootc:41
 ```
 
-For Fedora, you may need `--rootfs btrfs` if the image defaults to btrfs.
+> **Important:** You must `podman pull` the target image before running
+> bootc-image-builder — the builder uses local container storage and cannot pull
+> images itself. Always pass `--rootfs ext4` (or `btrfs` for Fedora btrfs defaults)
+> to avoid "no default fs set" errors.
 
 Output: `output/qcow2/disk.qcow2`
 
@@ -141,9 +146,10 @@ Use `--aws-ami-name`, `--aws-bucket`, and `--aws-region` **together**. If all th
 ### AWS Credentials: Mount $HOME/.aws
 
 ```bash
+sudo podman pull quay.io/fedora/fedora-bootc:41
+
 sudo podman run \
   --rm \
-  -it \
   --privileged \
   --pull=newer \
   --security-opt label=type:unconfined_t \
@@ -152,6 +158,7 @@ sudo podman run \
   --env AWS_PROFILE=default \
   quay.io/centos-bootc/bootc-image-builder:latest \
   --type ami \
+  --rootfs ext4 \
   --aws-ami-name my-bootc-ami \
   --aws-bucket my-bootc-import-bucket \
   --aws-region us-east-1 \
@@ -171,7 +178,6 @@ AWS_SECRET_ACCESS_KEY=...
 
 sudo podman run \
   --rm \
-  -it \
   --privileged \
   --pull=newer \
   --security-opt label=type:unconfined_t \
@@ -179,6 +185,7 @@ sudo podman run \
   --env-file=aws.secrets \
   quay.io/centos-bootc/bootc-image-builder:latest \
   --type ami \
+  --rootfs ext4 \
   --aws-ami-name my-bootc-ami \
   --aws-bucket my-bootc-import-bucket \
   --aws-region us-east-1 \
@@ -216,44 +223,48 @@ append = "console=tty0 console=ttyS0,115200n8"
 ### QCOW2 Build (Local)
 
 ```bash
+sudo podman pull ghcr.io/duyhenryer/bootc-testboot:centos-stream9-latest
+
 sudo podman run \
   --rm \
-  -it \
   --privileged \
-  --pull=newer \
   --security-opt label=type:unconfined_t \
   -v ./builder/qcow2/config.toml:/config.toml:ro \
   -v ./output:/output \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   quay.io/centos-bootc/bootc-image-builder:latest \
   --type qcow2 \
-  --use-librepo=True \
-  --rootfs btrfs \
-  quay.io/fedora/fedora-bootc:41
+  --rootfs ext4 \
+  --config /config.toml \
+  ghcr.io/duyhenryer/bootc-testboot:centos-stream9-latest
 ```
 
 ### AMI Build (Auto-upload)
 
 ```bash
+sudo podman pull ghcr.io/duyhenryer/bootc-testboot:centos-stream9-latest
+
 sudo podman run \
   --rm \
-  -it \
   --privileged \
-  --pull=newer \
   --security-opt label=type:unconfined_t \
   -v $HOME/.aws:/root/.aws:ro \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   --env AWS_PROFILE=default \
   quay.io/centos-bootc/bootc-image-builder:latest \
   --type ami \
+  --rootfs ext4 \
   --aws-ami-name bootc-poc-ami \
   --aws-bucket YOUR_BOOTC_IMPORT_BUCKET \
   --aws-region us-east-1 \
-  --rootfs btrfs \
-  quay.io/fedora/fedora-bootc:41
+  ghcr.io/duyhenryer/bootc-testboot:centos-stream9-latest
 ```
 
-Replace `YOUR_BOOTC_IMPORT_BUCKET` with an S3 bucket that exists and has the vmimport role configured. To use your own built bootc image (e.g. from this repo's `Containerfile`), build it first with `podman build -t my-bootc:latest .` and replace the image reference.
+Replace `YOUR_BOOTC_IMPORT_BUCKET` with an S3 bucket that exists and has the vmimport role configured.
+
+> **Production note:** In production, disk images are built in CI via `workflow_dispatch`
+> on `build-bootc.yml` and published as OCI artifacts to GHCR. The commands above are
+> for reference/debugging only.
 
 ---
 
@@ -262,24 +273,25 @@ Replace `YOUR_BOOTC_IMPORT_BUCKET` with an S3 bucket that exists and has the vmi
 Use `--type vmdk` to create a VMDK disk image suitable for VMware vSphere, ESXi, or VirtualBox.
 
 ```bash
+sudo podman pull ghcr.io/duyhenryer/bootc-testboot:centos-stream9-latest
+
 sudo podman run \
   --rm \
-  -it \
   --privileged \
-  --pull=newer \
   --security-opt label=type:unconfined_t \
-  -v ./builder/qcow2/config.toml:/config.toml:ro \
+  -v ./builder/vmdk/config.toml:/config.toml:ro \
   -v ./output:/output \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   quay.io/centos-bootc/bootc-image-builder:latest \
   --type vmdk \
+  --rootfs ext4 \
   --config /config.toml \
-  ghcr.io/duyhenryer/bootc-testboot:latest
+  ghcr.io/duyhenryer/bootc-testboot:centos-stream9-latest
 ```
 
 Output: `output/vmdk/disk.vmdk`
 
-For our POC: `make vmdk` wraps this command.
+> In production, VMDK builds are triggered via CI (`workflow_dispatch` with `formats=vmdk`).
 
 See also: [Red Hat: Creating VMDK images](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/using_image_mode_for_rhel_to_build_deploy_and_manage_operating_systems/creating-bootc-compatible-base-disk-images-with-bootc-image-builder_using-image-mode-for-rhel-to-build-deploy-and-manage-operating-systems#creating-vmdk-images-by-using-bootc-image-builder_creating-bootc-compatible-base-disk-images-with-bootc-image-builder)
 
@@ -297,28 +309,23 @@ bootc-image-builder does not produce OVA directly. An OVA is a tar archive conta
 
 ### Creating an OVA
 
-1. Build the VMDK: `make vmdk`
-2. Package as OVA: `make ova`
+OVA packaging is handled automatically in CI when `vmdk` is included in the `formats` input of `build-bootc.yml` (triggered via `workflow_dispatch`). The CI pipeline:
 
-The `make ova` target runs `scripts/create-ova.sh`, which:
-- Takes the VMDK from `output/vmdk/disk.vmdk`
-- Fills in `templates/bootc-poc.ovf` with VM specs (CPU, memory, disk size)
-- Generates a SHA256 manifest
-- Packages everything as `output/ova/bootc-poc-<version>.ova`
+1. Builds the VMDK via `bootc-image-builder --type vmdk`
+2. Generates an OVF descriptor from `builder/ova/bootc-poc.ovf` (template with CPU, RAM, disk placeholders)
+3. Creates a SHA256 manifest
+4. Packages everything as `.ova` (tar of OVF + VMDK + manifest)
+5. Pushes the OVA as a separate OCI artifact to GHCR
 
-### Customizing VM Specs
+### OVA VM Spec Defaults
 
-Override via environment variables:
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `OVA_CPU` | 2 | Virtual CPU count |
+| `OVA_MEMORY` | 4096 | Memory in MB |
+| `OVA_DISK` | 20 | Disk capacity in GiB |
 
-```bash
-NUM_CPUS=4 MEMORY_MB=8192 DISK_CAPACITY=100 make ova
-```
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NUM_CPUS` | 2 | Virtual CPU count |
-| `MEMORY_MB` | 4096 | Memory in MB |
-| `DISK_CAPACITY` | 60 | Disk capacity in GiB |
+These are set as environment variables in the CI workflow and can be overridden.
 
 ### Importing into vSphere
 
@@ -380,7 +387,7 @@ gcloud compute images create bootc-poc-latest \
   --guest-os-features=UEFI_COMPATIBLE,VIRTIO_SCSI_MULTIQUEUE
 ```
 
-For our POC: `make gce` wraps all three steps into `scripts/create-gce.sh`.
+In production, the GCE image is built in CI via `workflow_dispatch` with `formats=gce`.
 
 ### Environment Variables
 
@@ -467,8 +474,11 @@ The bootc OCI image and bootc-image-builder image must support the target arch. 
 - [ ] For AMI: all of `--aws-ami-name`, `--aws-bucket`, `--aws-region`
 - [ ] Use `--env-file` for AWS secrets, never plain `--env`
 - [ ] Add vmimport role and S3 permissions for AMI
+- [ ] Always `podman pull` the target image before running bootc-image-builder
+- [ ] Always pass `--rootfs ext4` to avoid "no default fs set" errors
+- [ ] Do not use `-it` flags — they break CI/non-interactive builds
 - [ ] For VMDK: mount `./output:/output` for local output
-- [ ] For OVA: run `make ova` (builds VMDK first, then packages with OVF)
+- [ ] For OVA: CI auto-packages from VMDK when `vmdk` is in `formats` input
 - [ ] For GCE: `--type gce` → tar.gz → `gsutil cp` → `gcloud compute images create`
 - [ ] For GCE: IAM `roles/compute.imageAdmin` + `roles/storage.objectAdmin`
 - [ ] Filesystem: only `/`, `/boot`, and `/var/*` subdirs (no `/var` itself, no symlinks)

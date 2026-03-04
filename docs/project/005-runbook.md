@@ -164,7 +164,7 @@ Creates a persistent writable overlay on `/opt`. Changes survive reboots but are
 | `/var` from Containerfile = first boot only | Content you COPY into `/var` in the Containerfile only takes effect on first install. Use `tmpfiles.d` or `StateDirectory=` instead. |
 | Staged download-only discarded on reboot | If you reboot before applying, the staged deployment is lost. Image data remains cached. |
 | Cannot SSH and `dnf install` | `/usr` is read-only. All changes must go through the Containerfile and a new image build. Use `bootc usr-overlay` for temporary debugging only. |
-| `/etc` 3-way merge conflicts | If both the image and local host modify the same file in `/etc`, the image version wins. Use drop-in directories to avoid this. |
+| `/etc` 3-way merge conflicts | Service configs are symlinked to `/usr/share/` (read-only), so merge conflicts do not occur for managed configs. Only machine-local files in `/etc` (hostname, SSH keys) are subject to merge. |
 
 ---
 
@@ -208,43 +208,32 @@ Shows the exact container image reference and digest for the booted deployment.
 
 ---
 
-## 7. Build VMDK / OVA (for VMware)
+## 7. Build Disk Images (CI only)
 
-### Create VMDK
+Disk images (AMI, VMDK, OVA, QCOW2, ISO) are built in CI via `workflow_dispatch`:
 
-```bash
-make vmdk
-# Output: output/vmdk/disk.vmdk
-```
+1. Go to **Actions** > **Build bootc image** > **Run workflow**
+2. Choose distro, platforms, and set `formats` (e.g. `qcow2,vmdk,ami`)
+3. Artifacts are pushed to GHCR as OCI scratch images
 
-Requires `sudo` (bootc-image-builder runs `--privileged`). The bootc image must be available in local container storage (`make build` first) or in GHCR.
-
-### Create OVA from VMDK
+### Pull a disk artifact
 
 ```bash
-make ova
-# Output: output/ova/bootc-poc-<version>.ova
+IMAGE="ghcr.io/duyhenryer/bootc-testboot-centos-stream9-qcow2:latest-amd64"
+ctr=$(podman create $IMAGE /bin/true)
+podman export $ctr | tar -xf - -C ./output/
+podman rm $ctr
 ```
 
-`make ova` depends on `make vmdk` and runs it automatically if needed.
+### OVA for VMware
 
-### Customize VM specs
+When `vmdk` is in `formats`, CI auto-packages the VMDK into an OVA using `builder/ova/bootc-poc.ovf`.
 
-```bash
-NUM_CPUS=4 MEMORY_MB=8192 DISK_CAPACITY=100 make ova
-```
+**Import into vSphere:**
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NUM_CPUS` | 2 | Virtual CPUs |
-| `MEMORY_MB` | 4096 | Memory in MB |
-| `DISK_CAPACITY` | 60 | Disk in GiB |
-
-### Import into vSphere
-
-1. vSphere Client > **Hosts and Clusters** > right-click host > **Deploy OVF Template**
-2. Select the `.ova` file
-3. Follow wizard, power on
+1. Pull the OVA artifact from GHCR
+2. vSphere Client > **Hosts and Clusters** > right-click host > **Deploy OVF Template**
+3. Select the `.ova` file, follow wizard, power on
 
 ---
 
@@ -259,8 +248,5 @@ NUM_CPUS=4 MEMORY_MB=8192 DISK_CAPACITY=100 make ova
 | Temp writable /usr | `sudo bootc usr-overlay` |
 | Check /etc drift | `sudo ostree admin config-diff` |
 | Update bootloader | `sudo bootupctl update` |
-| Health checks | `./scripts/verify-instance.sh` |
-| Create AMI | `make ami` |
-| Create VMDK | `make vmdk` |
-| Create OVA | `make ova` |
-| Custom OVA specs | `NUM_CPUS=4 MEMORY_MB=8192 make ova` |
+| Create disk images | `workflow_dispatch` on `build-bootc.yml` with `formats=...` |
+| Pull disk artifact | `podman create <oci-image> /bin/true` then `podman export` |

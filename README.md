@@ -21,11 +21,11 @@ flowchart LR
         AppBuild["FROM base\n+ nginx\n+ Go binaries\n+ systemd units"]
     end
 
-    subgraph disk ["Disk Images (on-demand)"]
-        AMI["make ami → AWS"]
-        GCE["make gce → GCP"]
-        OVA["make ova → vSphere"]
-        QCOW2["make qcow2 → KVM"]
+    subgraph disk ["Disk Images (CI on-demand)"]
+        AMI["ami → AWS"]
+        GCE["gce → GCP"]
+        OVA["ova → vSphere"]
+        QCOW2["qcow2 → KVM"]
     end
 
     CentOS9 & Fedora41 --> AppBuild
@@ -41,9 +41,9 @@ flowchart LR
 | Fedora 40 | `fedora-bootc:40` | ~2025 |
 | Fedora 41 | `fedora-bootc:41` | ~2026 |
 
-> Ubuntu bootc is not production-ready. See [docs/014](docs/014-ubuntu-bootc-status.md).
+> Ubuntu bootc is not production-ready. See [docs/010](docs/bootc/010-ubuntu-bootc-status.md).
 
-## Quick Start
+## Quick Start (Local Development)
 
 ```bash
 # 1. Build base image (choose distro)
@@ -55,12 +55,12 @@ make test
 # 3. Build application image (on chosen base)
 make build BASE_DISTRO=centos-stream9
 
-# 4. Create disk images
-make ami      # AWS AMI
-make gce      # Google Compute Engine
-make ova      # VMware OVA
-make qcow2    # KVM/libvirt
+# 4. Lint the image
+make lint
 ```
+
+> Disk images (AMI, VMDK, OVA, QCOW2, ISO) are built exclusively in CI via
+> `workflow_dispatch` on `build-bootc.yml`. See [CI Architecture](#ci-architecture-distribution-model) below.
 
 ## Project Structure
 
@@ -73,37 +73,33 @@ base/
   centos/stream10/         Base image: CentOS Stream 10
 bootc/
   apps/
-    hello/                 # In-house app OS Configuration Module
+    hello/                 In-house app OS Configuration Module
       rootfs/
         usr/lib/systemd/system/hello.service
         usr/lib/tmpfiles.d/hello.conf
   services/
-    nginx/                 # Third-party service OS Configuration Module
+    nginx/                 Third-party service OS Configuration Module
       rootfs/
         etc/nginx/nginx.conf
-builder/                   # Artifact build configs (qcow2, ami, etc.)
+builder/                   Artifact build configs (per format)
+  qcow2/config.toml       QCOW2 builder customizations
+  vmdk/config.toml         VMDK builder customizations
+  ova/bootc-poc.ovf        OVF template for OVA packaging
 repos/
-  hello/                   # Mock App Source Repository (just Go code)
+  hello/                   Mock App Source Repository (Go code)
     main.go, go.mod, main_test.go
-scripts/
-  create-image.sh          Unified disk image builder (ami|gce|vmdk|qcow2|raw|vhd)
-  create-ova.sh            VMDK + OVF → OVA packaging
 Containerfile              Layer 2: application image
-Makefile                   All operations
+Makefile                   Local dev targets (apps/test/build/lint/clean)
 ```
 
 ## Adding a New App
 
 1. Create `repos/myapp/` with `main.go`, `go.mod`
-2. Create `bootc/apps/myapp/rootfs/` to hold your systemd unit and tmpfiles.
+2. Create systemd unit: `bootc/apps/myapp/rootfs/usr/lib/systemd/system/myapp.service` (must include `WantedBy=multi-user.target`)
 3. Add tmpfiles if needed: `bootc/apps/myapp/rootfs/usr/lib/tmpfiles.d/myapp.conf`
-4. Add `COPY` + `enable` in `Containerfile`:
-   ```dockerfile
-   COPY bootc/apps/*/rootfs /
-   RUN systemctl enable myapp
-   ```
-5. Add upstream + location in `bootc/services/nginx/rootfs/etc/nginx/nginx.conf`
-6. `make build` — auto-discovers `repos/*/` and builds all binaries
+4. If web-facing, add nginx vhost: `bootc/apps/myapp/rootfs/usr/share/nginx/conf.d/myapp.conf` (immutable)
+5. `make build` -- auto-discovers all `repos/*/` and `bootc/apps/*/`, auto-enables all services
+6. `make test-smoke` -- verify everything is in place before deploying
 
 ## CI Architecture (Distribution Model)
 
@@ -122,11 +118,15 @@ graph TD
         F --> G[Push: ghcr.io/...:centos-stream9-vN]
     end
 
-    subgraph L3["Layer 3: Artifact Generation (build-bootc.yml)"]
-        G -- Trigger Auto Jobs --> H{bootc-image-builder}
+    subgraph PR["PR Checks (build-bootc.yml)"]
+        PR1[Pull Request] --> PR2(Build single-arch + lint-strict)
+    end
+
+    subgraph L3["Layer 3: Artifact Generation (workflow_dispatch)"]
+        G -. manual trigger .-> H{bootc-image-builder}
         H -->|format: qcow2| I[qcow2 file]
         H -->|format: ami| J[ami file]
-        H -->|format: vmdk| K[vmdk file]
+        H -->|format: vmdk| K[vmdk + ova files]
         H -->|format: raw| L[raw file]
         H -->|format: iso| M[iso file]
     end
@@ -138,16 +138,17 @@ graph TD
         L --> N
         M --> N
         N --> O[(GHCR: OCI Registry)]
-        
+
         O -.-> P[podman pull ...:centos-stream9-qcow2-vN]
-        O -.-> Q[podman pull ...:centos-stream9-iso-vN]
+        O -.-> Q[podman pull ...:centos-stream9-ova-vN]
     end
 
     C -.->|Used as FROM| F
     D -.->|Used as FROM| F
 ```
 
-> For deploying these generated distribution images manually to AWS, GCP, or VMware, refer to [Manual Deployments Guide](docs/015-manual-deployments.md).
+> **Note:** Disk image artifacts are **not** built on every push. Use `workflow_dispatch`
+> on `build-bootc.yml` with the `formats` input to trigger artifact generation on-demand.
 
 ### Auditing Created Artifact Images
 Because artifact distribution images are packaged using `scratch` (meaning they do not contain a shell or OS utilities like `ls`), you cannot use `podman run` to inspect them directly. Instead, you can audit the contents of an artifact image by creating a dummy container and exporting its filesystem hierarchy using `tar`.
@@ -185,22 +186,39 @@ All base images include production hardening:
 - `/var` is **persistent** — app data survives OS rollback
 - `bootc upgrade` pulls new image, `bootc rollback` swaps back (~2 min)
 
-## Learning Docs
+## Documentation
+
+### Learn bootc (`docs/bootc/`)
+
+Read these first to understand how bootc works.
 
 | Doc | Topic |
 |-----|-------|
-| [000](docs/000-architecture-overview.md) | Architecture Overview |
-| [001](docs/001-what-is-bootc.md) | What is bootc? |
-| [002](docs/002-architecture-and-ostree.md) | Architecture & OSTree |
-| [003](docs/003-filesystem-layout.md) | Filesystem Layout |
-| [004](docs/004-building-bootc-images.md) | Building bootc Images |
-| [005](docs/005-users-groups-ssh.md) | Users, Groups & SSH |
-| [006](docs/006-secrets-management.md) | Secrets Management |
-| [007](docs/007-bootc-image-builder.md) | bootc-image-builder |
-| [008](docs/008-upgrade-and-rollback.md) | Upgrade & Rollback |
-| [009](docs/009-registries-and-offline.md) | Registries & Offline |
-| [010](docs/010-relationships.md) | Related Projects |
-| [011](docs/011-poc-walkthrough.md) | POC Walkthrough |
-| [012](docs/012-runbook.md) | Operations Runbook |
-| [013](docs/013-base-distro-comparison.md) | Base Distro Comparison |
-| [014](docs/014-ubuntu-bootc-status.md) | Ubuntu bootc Status |
+| [001](docs/bootc/001-what-is-bootc.md) | What is bootc? |
+| [002](docs/bootc/002-architecture-and-ostree.md) | Architecture & OSTree |
+| [003](docs/bootc/003-filesystem-layout.md) | Filesystem Layout (MUST READ) |
+| [004](docs/bootc/004-users-groups-ssh.md) | Users, Groups & SSH |
+| [005](docs/bootc/005-secrets-management.md) | Secrets Management |
+| [006](docs/bootc/006-upgrade-and-rollback.md) | Upgrade & Rollback |
+| [007](docs/bootc/007-registries-and-offline.md) | Registries & Offline |
+| [008](docs/bootc/008-relationships.md) | Related Projects |
+| [009](docs/bootc/009-base-distro-comparison.md) | Base Distro Comparison |
+| [010](docs/bootc/010-ubuntu-bootc-status.md) | Ubuntu bootc Status |
+| [011](docs/bootc/011-bootc-vision.md) | bootc Vision |
+| [012](docs/bootc/012-bootc-limitations.md) | bootc Limitations |
+
+### Our Project (`docs/project/`)
+
+How we use bootc to build, test, and deliver our product.
+
+| Doc | Topic |
+|-----|-------|
+| [001](docs/project/001-architecture-overview.md) | Architecture Overview |
+| [002](docs/project/002-building-bootc-images.md) | Building Our Images |
+| [003](docs/project/003-bootc-image-builder.md) | Disk Image Builder |
+| [004](docs/project/004-poc-walkthrough.md) | POC Walkthrough |
+| [005](docs/project/005-runbook.md) | Operations Runbook |
+| [006](docs/project/006-manual-deployments.md) | Manual VM Deployments |
+| [007](docs/project/007-production-upgrade-scenarios.md) | Production Upgrade Scenarios |
+| [008](docs/project/008-local-testing-guide.md) | Local Testing Guide |
+| [009](docs/project/009-test-case-registry.md) | Test Case Registry |

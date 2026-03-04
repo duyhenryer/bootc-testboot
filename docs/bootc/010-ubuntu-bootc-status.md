@@ -80,4 +80,4 @@ Monitor these signals:
 - [bootc: Installation / Base images](https://bootc-dev.github.io/bootc/installation.html)
 - [bootupd#468: Non-Fedora distro blocker](https://github.com/coreos/bootupd/issues/468)
 - [bootcrew/ubuntu-bootc](https://github.com/bootcrew/ubuntu-bootc)
-- [docs/013-base-distro-comparison.md](013-base-distro-comparison.md) — full distro comparison table
+- [009-base-distro-comparison.md](009-base-distro-comparison.md) — full distro comparison table

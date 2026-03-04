@@ -12,9 +12,8 @@ aws.secrets
 *.swp
 *.swo
 *~
-docs/report.md
-tmp-bootc-images/
-docs/bootc_deep_dive_vi.md
+docs/vi/*
+
 
 # output images
 output/
@@ -25,6 +24,3 @@ output/
 *.qcow
 *.img
 *.vmdk
-
-# Local Docs
-build-local-vi.md

@@ -97,7 +97,7 @@ Example flow:
 
 ## Disk Image Embedding (bootc-image-builder)
 
-When building disk images with bootc-image-builder, the config.toml can include initial users (passwords, SSH keys). These become machine-local state at first boot. See [doc 007](007-bootc-image-builder.md).
+When building disk images with bootc-image-builder, the config.toml can include initial users (passwords, SSH keys). These become machine-local state at first boot. See [doc 003](../project/003-bootc-image-builder.md).
 
 Rotating such secrets requires re-provisioning or a separate management process.
 

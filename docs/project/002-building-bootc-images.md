@@ -127,9 +127,13 @@ RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf
 
 `/etc` is machine-local state. OSTree performs a **3-way merge** on `/etc` during updates: changes in the image are applied unless the file was modified locally.
 
-### Drop-in Directories Preferred
+### Immutable Configs (Appliance Delivery)
 
-Avoid editing monolithic config files. Use drop-in directories instead:
+For customer-facing appliances, put all configs in `/usr/share/<service>/` and symlink from `/etc/`. This makes configs read-only at runtime -- customers cannot edit them, and upgrades replace them atomically with zero merge conflicts. See [007-production-upgrade-scenarios.md](007-production-upgrade-scenarios.md) for details.
+
+### Drop-in Directories (Base OS Tuning)
+
+For base OS tuning (sysctl, journald, SSH hardening), use drop-in directories:
 
 - systemd: `/etc/systemd/system/unit.d/` or `unit.d/*.conf`
 - sudoers: `/etc/sudoers.d/` instead of editing `/etc/sudoers`
@@ -246,8 +250,8 @@ RUN bootc container lint
 - [ ] Add `LABEL containers.bootc=1`
 - [ ] Put kernel at `/usr/lib/modules/$kver/vmlinuz` (base images handle this)
 - [ ] Do not add content under `/boot`
-- [ ] Put static config in `/usr`, machine-local in `/etc`
-- [ ] Prefer drop-in directories over editing monolithic configs
+- [ ] Put static config in `/usr/share/` (immutable), symlink from `/etc/`
+- [ ] Use drop-in directories for base OS tuning only
 - [ ] Put data under `/var`; symlink from `/opt` if needed
 - [ ] Launch services via systemd units, not entrypoint
 - [ ] Run `bootc container lint` before finalizing the image

@@ -139,8 +139,8 @@ flowchart TB
 
 | Path | Build-time | Runtime | Behavior |
 |------|------------|---------|----------|
-| `/usr` | Mutable | **Read-only** | OS content, binaries, drop-in configs |
-| `/etc` | Mutable | **Mutable** | 3-way merge on upgrade; use drop-ins |
+| `/usr` | Mutable | **Read-only** | OS content, binaries, immutable configs in `/usr/share/` |
+| `/etc` | Mutable | **Mutable** | Symlinks to `/usr/share/` for service configs; machine-local state only |
 | `/var` | Mutable | **Mutable, persistent** | Data survives upgrade and rollback |
 
 ---
@@ -252,13 +252,13 @@ flowchart TB
 
 ### Deployment Targets
 
-| Target | Command | Use Case |
-|--------|---------|----------|
-| **AWS AMI** | `make ami` | Cloud deployment on EC2 |
-| **VMware OVA** | `make ova` | On-premise customer delivery via vSphere |
-| **VMDK** | `make vmdk` | Direct VMware disk image |
+| Target | CI Trigger | Use Case |
+|--------|-----------|----------|
+| **AWS AMI** | `workflow_dispatch` with `formats=ami` | Cloud deployment on EC2 |
+| **VMware OVA** | `workflow_dispatch` with `formats=vmdk` (auto-packages OVA) | On-premise customer delivery via vSphere |
+| **QCOW2** | `workflow_dispatch` with `formats=qcow2` | KVM/libvirt testing |
 
-Same pattern everywhere: **Containerfile + systemd units + tmpfiles.d** for `/var` dirs. One image, one source of truth, atomic upgrades. Same OCI image produces AMI, OVA, or any other format via bootc-image-builder.
+Same pattern everywhere: **Containerfile + systemd units + tmpfiles.d** for `/var` dirs. One image, one source of truth, atomic upgrades. Same OCI image produces AMI, OVA, or any other format via bootc-image-builder. All disk artifacts are built in CI and published as OCI scratch images to GHCR.
 
 ---
 

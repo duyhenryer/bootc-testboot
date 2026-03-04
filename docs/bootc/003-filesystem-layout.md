@@ -171,6 +171,42 @@ Then `/etc` is regenerated from image each boot. Machine-specific state may need
 
 ---
 
+## Immutable Config Strategy (Appliance Delivery)
+
+When delivering an appliance to customers (OVA, GCE, AMI), you typically do **not** want customers editing configs. The 3-way merge becomes a liability: customer edits can conflict with your new release.
+
+### Pattern: Config in `/usr/share/`, Symlink from `/etc/`
+
+Put the config source of truth in `/usr/share/<service>/` (read-only at runtime), and create a symlink from `/etc/` so the software finds it at the expected path:
+
+```dockerfile
+# 1. Install the package (puts default config in /etc)
+RUN dnf install -y nginx
+
+# 2. Custom config lives in /usr/share/ (from rootfs overlay)
+COPY bootc/services/nginx/rootfs/ /
+
+# 3. Symlink /etc -> /usr/share (immutable at runtime)
+RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf && \
+    rm -rf /etc/nginx/conf.d && \
+    ln -sf /usr/share/nginx/conf.d /etc/nginx/conf.d
+```
+
+**Result at runtime:**
+
+```
+/etc/nginx/nginx.conf  --->  /usr/share/nginx/nginx.conf  (READ-ONLY)
+/etc/nginx/conf.d/     --->  /usr/share/nginx/conf.d/     (READ-ONLY)
+```
+
+**On upgrade:** `/usr` is replaced atomically. New config is applied with zero merge conflicts.
+
+This pattern applies to all middleware (nginx, mongodb, redis, rabbitmq) and app configs.
+
+> For full production upgrade scenarios, see [007-production-upgrade-scenarios.md](../project/007-production-upgrade-scenarios.md).
+
+---
+
 ## /var: MUTABLE, PERSISTENT, NOT ROLLED BACK
 
 ### Critical: Acts Like Docker VOLUME
@@ -182,10 +218,20 @@ Content in `/var` in the container image behaves like `VOLUME /var`:
 - DB data, logs, caches **survive** upgrades **and** rollbacks
 
 ```
-Image v1: /var/lib/postgresql/ (initial unpack)
-Image v2: /var/lib/postgresql/ (changed structure)
+Image v1: /var/lib/mongodb/ (initial unpack)
+Image v2: /var/lib/mongodb/ (changed structure)
          └── On upgrade: v2 structure NOT applied; v1 content kept
 ```
+
+### Production Middleware Data Paths
+
+| Service | Data path | What persists |
+|---------|-----------|---------------|
+| MongoDB | `/var/lib/mongodb/` | Database files, journals |
+| Redis | `/var/lib/redis/` | RDB snapshots, AOF logs |
+| RabbitMQ | `/var/lib/rabbitmq/` | Queues, exchanges, Erlang cookie |
+| App state | `/var/lib/<app>/` | Application-specific state |
+| All logs | `/var/log/<service>/` | Service log files |
 
 ### Use tmpfiles.d or StateDirectory=
 

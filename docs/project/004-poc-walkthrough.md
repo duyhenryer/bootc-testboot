@@ -31,37 +31,28 @@ cd bootc-testboot
 ```
 bootc-testboot/
 ├── base/
-│   ├── rootfs/                # Base OS config overly (SSH, sysctl, systemd)
+│   ├── shared/                # Base OS config overlay (SSH, sysctl, systemd)
 │   └── centos/stream9/Containerfile
+├── bootc/
+│   ├── apps/hello/rootfs/     # App OS config overlay (systemd unit, tmpfiles)
+│   └── services/nginx/rootfs/ # Third-party service config overlay
 ├── repos/
 │   └── hello/                 # Go HTTP hello world
 │       ├── main.go
 │       ├── go.mod
-│       └── rootfs/            # App config overlay
-│           ├── etc/nginx/nginx.conf
-│           ├── usr/lib/systemd/system/hello.service
-│           └── usr/lib/tmpfiles.d/hello.conf
+│       └── main_test.go
 ├── output/                    # (gitignored) build artifacts
 │   └── bin/                   # pre-built Go binaries
-├── builder/                   # bootc-image-builder artifacts setup
+├── builder/                   # bootc-image-builder configs (per format)
 │   ├── qcow2/config.toml
-│   ├── ami/config.toml
+│   ├── vmdk/config.toml
+│   ├── ova/bootc-poc.ovf
 │   └── README.md
-├── scripts/
-│   ├── create-ami.sh
-│   ├── create-vmdk.sh
-│   ├── create-ova.sh
-│   ├── upgrade-os.sh
-│   ├── rollback-os.sh
-│   └── verify-instance.sh
-├── templates/
-│   └── bootc-poc.ovf            # OVF descriptor for OVA packaging
 ├── .github/workflows/
-│   ├── build-bootc.yml
-│   ├── create-ami.yml
-│   └── create-ova.yml
-├── Containerfile              # Layer 2: app image (COPY bootc/apps/*/rootfs)
-└── Makefile
+│   ├── build-base.yml         # Base image CI (daily/manual)
+│   └── build-bootc.yml        # App image CI + on-demand disk artifacts
+├── Containerfile              # Layer 2: app image
+└── Makefile                   # Local dev targets (apps/test/build/lint/clean)
 ```
 
 ---
@@ -115,91 +106,39 @@ Successfully tagged ghcr.io/duyhenryer/bootc-testboot:dev
 
 Pushing to GHCR is handled **automatically by GitHub Actions** when you merge to `main`. There is no need to login or push locally.
 
-The workflow (`.github/workflows/build-bootc.yml`) runs `make build` then `make ci-push` using the built-in `GITHUB_TOKEN` -- no PAT or manual credentials required.
-
-If you need to push manually for debugging, use the CI-only targets:
-
-```bash
-export GITHUB_USER=your-github-username
-export GHCR_TOKEN=your-personal-access-token  # needs write:packages scope
-make ci-login
-make ci-push
-```
+The workflow (`.github/workflows/build-bootc.yml`) builds the image with `podman build` then pushes using the built-in `GITHUB_TOKEN` — no PAT or manual credentials required.
 
 ---
 
-## 6. Create AMI
+## 6. Create Disk Images (CI only)
 
-Run on the **EC2 builder instance** (t3.large with podman):
+Disk images (AMI, VMDK, OVA, QCOW2, ISO) are built in CI, not locally. Use `workflow_dispatch` on `build-bootc.yml`:
 
-```bash
-export REGISTRY=ghcr.io/duyhenryer
-export IMAGE=${REGISTRY}/bootc-testboot
-export AWS_REGION=ap-southeast-1
-export AWS_BUCKET=my-bootc-poc-bucket  # must exist
+1. Go to **Actions** > **Build bootc image** > **Run workflow**
+2. Select distro, platforms, and fill in `formats` (e.g. `qcow2,vmdk,ami`)
+3. The workflow builds disk images and pushes them as OCI scratch artifacts to GHCR
 
-make ami
-```
-
-**Important:** `bootc-image-builder` runs in a **privileged** container and needs:
-- `--privileged`
-- `--security-opt label=type:unconfined_t`
-- Access to `/var/lib/containers/storage` (for the image)
-- AWS credentials (`~/.aws`)
-
-**Expected output:**
-
-```
-==> Creating AMI: bootc-poc-dev
-    Image:  ghcr.io/duyhenryer/bootc-testboot:dev
-    Region: ap-southeast-1
-    Bucket: my-bootc-poc-bucket
-...
-==> AMI bootc-poc-dev created. Check AWS Console for the new AMI.
-```
-
----
-
-## 6b. Create VMDK / OVA (for VMware vSphere)
-
-If targeting VMware instead of (or in addition to) AWS, create a VMDK disk image and package it as an OVA:
+### Pulling a disk artifact
 
 ```bash
-# Create VMDK via bootc-image-builder (requires sudo)
-make vmdk
+IMAGE="ghcr.io/duyhenryer/bootc-testboot-centos-stream9-qcow2:latest-amd64"
 
-# Package VMDK into OVA (VMDK + OVF descriptor + manifest)
-make ova
-
-# Or run both in one step (ova depends on vmdk):
-make ova
+# Create a dummy container and export its filesystem
+ctr=$(podman create $IMAGE /bin/true)
+podman export $ctr | tar -xf - -C ./output/
+podman rm $ctr
 ```
 
-Customize VM specs via environment variables:
+### OVA for VMware
 
-```bash
-NUM_CPUS=4 MEMORY_MB=8192 DISK_CAPACITY=100 make ova
-```
-
-**Expected output:**
-
-```
-==> Creating VMDK: bootc-poc-dev
-    Image: ghcr.io/duyhenryer/bootc-testboot:dev
-...
-==> VMDK created at output/vmdk/disk.vmdk
-==> Packaging OVA: bootc-poc-dev
-...
-==> OVA created at output/ova/bootc-poc-dev.ova
-    Import into vSphere: Hosts > Deploy OVF Template > output/ova/bootc-poc-dev.ova
-```
+When `vmdk` is included in `formats`, the CI pipeline automatically packages the VMDK into an OVA (with OVF descriptor from `builder/ova/bootc-poc.ovf`) and pushes it as a separate OCI artifact.
 
 **Import into vSphere:**
 
-1. In vSphere Client: **Hosts and Clusters** > right-click host > **Deploy OVF Template**
-2. Select the `.ova` file
-3. Follow the wizard (accept defaults or customize)
-4. Power on the VM
+1. Pull the OVA artifact from GHCR (see above)
+2. In vSphere Client: **Hosts and Clusters** > right-click host > **Deploy OVF Template**
+3. Select the `.ova` file
+4. Follow the wizard and power on the VM
 
 ---
 
@@ -270,27 +209,21 @@ Production-safe flow: download during business hours, apply during maintenance.
 **Phase 1 — Download (no reboot):**
 
 ```bash
-./scripts/upgrade-os.sh download
-```
-
-**Expected output:**
-
-```
-==> Phase 1: Downloading update (no apply, no reboot)
-...
-==> Staged deployment status:
-Deployment: quay.io/fedora/fedora-bootc:41 ...
-
-Download complete. Run './scripts/upgrade-os.sh apply' during maintenance window.
+sudo bootc upgrade --check    # see what's available
+sudo bootc upgrade            # download + stage (no reboot yet)
 ```
 
 **Phase 2 — Apply (during maintenance):**
 
 ```bash
-./scripts/upgrade-os.sh apply
+sudo systemctl reboot         # boots into the new deployment
 ```
 
-When prompted, type `y` to confirm. The system will reboot into the new deployment.
+After reboot, verify the upgrade:
+
+```bash
+sudo bootc status
+```
 
 ---
 
@@ -299,23 +232,12 @@ When prompted, type `y` to confirm. The system will reboot into the new deployme
 If the new deployment is problematic:
 
 ```bash
-./scripts/rollback-os.sh
+sudo bootc rollback           # marks previous deployment as default
+sudo systemctl reboot         # boots into the previous deployment
 ```
 
-When prompted, type `y`. The system rolls back to the previous deployment and reboots.
-
-**Expected output:**
-
-```
-==> Current status:
-...
-WARNING: /var data will NOT be rolled back.
-         The system will reboot into the previous deployment.
-
-Continue with rollback + reboot? [y/N] y
-==> Rolling back...
-==> Rebooting...
-```
+> **Warning:** `/var` data is **not** rolled back. Database migrations and app state
+> in `/var` must be handled separately.
 
 ---
 
@@ -324,7 +246,7 @@ Continue with rollback + reboot? [y/N] y
 Data in `/var` (logs, DB files, app state) is **not** rolled back. To confirm:
 
 1. Before rollback, create a file: `echo "survives" | sudo tee /var/lib/hello/test-survives.txt`
-2. Run `./scripts/rollback-os.sh` and reboot
+2. Run `sudo bootc rollback && sudo systemctl reboot`
 3. After reboot: `cat /var/lib/hello/test-survives.txt` → `survives`
 
 This is by design: DB migrations and app state in `/var` must be handled separately.
@@ -356,29 +278,26 @@ COPY bootc/apps/api/rootfs/ /
 RUN systemctl enable api
 ```
 
-### Step 3: Rebuild and redeploy
+### Step 3: Rebuild and test locally
 
 ```bash
-make build    # auto-discovers apps/api/, builds binary, assembles OS image
-make push
-make ami
+make build    # auto-discovers repos/api/, builds binary, assembles OS image
+make lint     # verify bootc compliance
 ```
 
-Launch a new instance from the updated AMI (or use `bootc upgrade` on existing instances).
+Push to `main` to trigger CI build. Use `workflow_dispatch` for disk artifacts. On existing instances, `bootc upgrade` pulls the new image.
 
 ---
 
 ## Quick Reference
 
-| Step           | Command                         |
-|----------------|----------------------------------|
-| Test           | `make test`                      |
-| Build          | `make build`                     |
+| Step | Command |
+|------|---------|
+| Test | `make test` |
+| Build | `make build` |
+| Lint | `make lint` |
 | Push (CI only) | Auto via GitHub Actions on merge to `main` |
-| Create AMI     | `make ami`                       |
-| Create VMDK    | `make vmdk`                      |
-| Create OVA     | `make ova`                       |
-| Verify         | `make verify` (on instance)      |
-| Upgrade download | `./scripts/upgrade-os.sh download` |
-| Upgrade apply  | `./scripts/upgrade-os.sh apply`   |
-| Rollback       | `./scripts/rollback-os.sh`       |
+| Create disk images | `workflow_dispatch` on `build-bootc.yml` with `formats=...` |
+| Upgrade | `sudo bootc upgrade && sudo systemctl reboot` |
+| Rollback | `sudo bootc rollback && sudo systemctl reboot` |
+| Status | `sudo bootc status` |

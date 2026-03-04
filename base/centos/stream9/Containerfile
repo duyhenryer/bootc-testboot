@@ -10,7 +10,7 @@ RUN dnf install -y epel-release \
         htop curl jq lsof tcpdump sysstat vim-minimal \
         cloud-init openssh-server firewalld chrony \
     && dnf clean all \
-    && rm -rf /var/cache/{dnf,ldconfig} /var/log/dnf*
+    && rm -rf /var/cache/{dnf,ldconfig} /var/log/{dnf*,hawkey*,rhsm} /var/lib/dnf
 
 # --- Production tuning (Rootfs Overlay) ---
 COPY base/rootfs/ /

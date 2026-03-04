@@ -8,6 +8,13 @@ on:
       - "repos/**"
       - "base/**"
       - "bootc/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Containerfile"
+      - "repos/**"
+      - "base/**"
+      - "bootc/**"
   workflow_dispatch:
     inputs:
       base_distro:
@@ -52,7 +59,7 @@ jobs:
           else
             PLATFORMS="linux/amd64,linux/arm64"
             DISTRO="centos-stream9"
-            FORMATS="qcow2,ami,raw,vmdk,anaconda-iso"
+            FORMATS=""
           fi
           
           echo "distro=$DISTRO" >> "$GITHUB_OUTPUT"
@@ -115,6 +122,44 @@ jobs:
               (cd "$d" && go test -v ./...)
             fi
           done
+
+  pr-check:
+    name: PR check (build + lint)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    needs: [test]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free up some disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build Go applications
+        run: make apps
+
+      - name: Build image (amd64 only)
+        run: |
+          podman build --platform linux/amd64 \
+            --build-arg BASE_DISTRO=centos-stream9 \
+            -t ${{ env.IMAGE }}:pr-check \
+            -f Containerfile .
+
+      - name: Strict lint
+        run: podman run --rm ${{ env.IMAGE }}:pr-check bootc container lint --fatal-warnings
 
   build:
     name: Build ${{ matrix.distro }} (${{ matrix.arch }})
@@ -326,13 +371,47 @@ jobs:
             -v $(pwd)/output:/output \
             quay.io/centos-bootc/bootc-image-builder:latest \
             --type ${{ matrix.format }} \
+            --rootfs ext4 \
             --config /builder/${{ matrix.format }}/config.toml \
             --chown $(id -u):$(id -g) \
             $TARGET_IMAGE
 
+      - name: Package OVA from VMDK
+        if: matrix.format == 'vmdk'
+        run: |
+          set -euo pipefail
+          CPU_COUNT="${OVA_CPU:-2}"
+          MEMORY_MB="${OVA_MEMORY:-4096}"
+          DISK_SIZE_GB="${OVA_DISK:-20}"
+          VERSION="${{ needs.create-manifest.outputs.version }}"
+          OVA_NAME="bootc-poc-${{ matrix.distro }}-${VERSION}-${{ matrix.arch }}"
+
+          VMDK_FILE=$(find output -name '*.vmdk' | head -1)
+          if [ -z "$VMDK_FILE" ]; then
+            echo "ERROR: No VMDK file found in output/"
+            exit 1
+          fi
+          VMDK_BASENAME=$(basename "$VMDK_FILE")
+          VMDK_SIZE=$(stat -c%s "$VMDK_FILE")
+
+          mkdir -p output/ova
+          sed -e "s/VMDK_FILENAME/${VMDK_BASENAME}/" \
+              -e "s/VMDK_SIZE/${VMDK_SIZE}/" \
+              -e "s/DISK_SIZE_GB/${DISK_SIZE_GB}/" \
+              -e "s/CPU_COUNT/${CPU_COUNT}/g" \
+              -e "s/MEMORY_MB/${MEMORY_MB}/g" \
+              builder/ova/bootc-poc.ovf > output/ova/${OVA_NAME}.ovf
+
+          cp "$VMDK_FILE" output/ova/${VMDK_BASENAME}
+
+          cd output/ova
+          sha256sum ${OVA_NAME}.ovf ${VMDK_BASENAME} > ${OVA_NAME}.mf
+          tar cf ${OVA_NAME}.ova ${OVA_NAME}.ovf ${VMDK_BASENAME} ${OVA_NAME}.mf
+          echo "OVA created: ${OVA_NAME}.ova ($(du -h ${OVA_NAME}.ova | cut -f1))"
+
       - name: Package artifact as OCI and push
         run: |
-          cat > output/Containerfile.scratch <<EOF
+          cat > output/Containerfile.scratch <<'EOF'
           FROM scratch
           COPY . /
           EOF
@@ -344,6 +423,25 @@ jobs:
           cd output
           sudo buildah bud --tag $IMAGE_TAG --tag $LATEST_TAG -f Containerfile.scratch .
           
+          echo "${{ github.token }}" | sudo buildah login ghcr.io -u "${{ github.actor }}" --password-stdin
+          sudo buildah push $IMAGE_TAG
+          sudo buildah push $LATEST_TAG
+
+      - name: Package OVA as OCI and push
+        if: matrix.format == 'vmdk'
+        run: |
+          cat > output/ova/Containerfile.scratch <<'EOF'
+          FROM scratch
+          COPY . /
+          EOF
+
+          ARTIFACT_IMAGE=${{ env.IMAGE }}-${{ matrix.distro }}-ova
+          IMAGE_TAG=${ARTIFACT_IMAGE}:${{ needs.create-manifest.outputs.version }}-${{ matrix.arch }}
+          LATEST_TAG=${ARTIFACT_IMAGE}:latest-${{ matrix.arch }}
+
+          cd output/ova
+          sudo buildah bud --tag $IMAGE_TAG --tag $LATEST_TAG -f Containerfile.scratch .
+
           echo "${{ github.token }}" | sudo buildah login ghcr.io -u "${{ github.actor }}" --password-stdin
           sudo buildah push $IMAGE_TAG
           sudo buildah push $LATEST_TAG
@@ -371,7 +469,12 @@ jobs:
             FORMATS="${{ github.event.inputs.formats }}"
           else
             PLATFORMS="linux/amd64,linux/arm64"
-            FORMATS="qcow2,ami,raw,vmdk,anaconda-iso"
+            FORMATS=""
+          fi
+          
+          if [ -z "$FORMATS" ]; then
+            echo "No formats to create manifests for. Skipping."
+            exit 0
           fi
           
           IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
@@ -381,7 +484,17 @@ jobs:
           done
           
           IFS=',' read -ra FORMAT_ARRAY <<< "$FORMATS"
-          
+
+          # Auto-add ova manifest when vmdk is in the format list
+          OVA_ADDED=false
+          for FMT in "${FORMAT_ARRAY[@]}"; do
+            if [ "$FMT" = "vmdk" ]; then
+              FORMAT_ARRAY+=("ova")
+              OVA_ADDED=true
+              break
+            fi
+          done
+
           for FMT in "${FORMAT_ARRAY[@]}"; do
             ARTIFACT_IMAGE="${{ env.IMAGE }}-${DISTRO}-${FMT}"
             
