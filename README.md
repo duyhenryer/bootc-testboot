@@ -114,8 +114,8 @@ graph TD
     end
 
     subgraph L2["Layer 2: Application Build (build-bootc.yml)"]
-        E[Push to main<br>Modify repos/* or Containerfile] --> F(Build app image<br>FROM base-*)
-        F --> G[Push: ghcr.io/...:centos-stream9-vN]
+        E[Push to main or git tag v*] --> F(Build app image<br>FROM base-*)
+        F --> G["Push: ghcr.io/...:centos-stream9-latest\nor :centos-stream9-1.0.0"]
     end
 
     subgraph PR["PR Checks (build-bootc.yml)"]
@@ -139,8 +139,8 @@ graph TD
         M --> N
         N --> O[(GHCR: OCI Registry)]
 
-        O -.-> P[podman pull ...:centos-stream9-qcow2-vN]
-        O -.-> Q[podman pull ...:centos-stream9-ova-vN]
+        O -.-> P["podman pull ...:centos-stream9-qcow2-1.0.0"]
+        O -.-> Q["podman pull ...:centos-stream9-ova-1.0.0"]
     end
 
     C -.->|Used as FROM| F
@@ -166,6 +166,30 @@ podman export $ctr | tar -tv
 # 3. Clean up the dummy container
 podman rm $ctr
 ```
+
+## Versioning & Tagging
+
+Tags are driven by **git tags** (semver). Push to `main` produces `latest`. Creating a git tag triggers a versioned release.
+
+| Event | Git Ref | Image Tags |
+|-------|---------|------------|
+| Push to `main` | `refs/heads/main` | `{distro}-latest` |
+| Git tag `v1.0.0` | `refs/tags/v1.0.0` | `{distro}-1.0.0`, `{distro}-latest` |
+| Git tag `base-v1.0.0` | `refs/tags/base-v1.0.0` | `{distro}-1.0.0`, `{distro}-latest` (base image) |
+| Pull request | `refs/pull/N` | Build + lint only (no push) |
+
+**Release workflow:**
+
+```bash
+# Development: push to main -> auto-build -> latest tag
+git push origin main
+
+# Release: create a semver tag -> auto-build -> versioned tag
+git tag v1.0.0
+git push --tags
+```
+
+**Traceability:** Every app image has OCI labels recording which base image version and git commit it was built from. Inspect with `podman inspect <image> | jq '.[0].Config.Labels'`.
 
 ## Base Image Tuning
 

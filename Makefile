@@ -6,7 +6,9 @@
 REGISTRY   ?= ghcr.io/duyhenryer
 IMAGE      ?= $(REGISTRY)/bootc-testboot
 BASE_IMAGE ?= $(REGISTRY)/bootc-testboot-base
-VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION    ?= latest
+BASE_IMAGE_VERSION ?= latest
+GIT_SHA    ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 PODMAN     ?= podman
 
 # Base distro selection (centos-stream9 | centos-stream10 | fedora-40 | fedora-41)
@@ -65,6 +67,8 @@ build: apps ## Build application image (uses base, BASE_DISTRO=centos-stream9|..
 	$(PODMAN) build \
 		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
 		--build-arg BASE_DISTRO=$(BASE_DISTRO) \
+		--build-arg BASE_IMAGE_VERSION=$(BASE_IMAGE_VERSION) \
+		--build-arg GIT_SHA=$(GIT_SHA) \
 		-t $(IMAGE):$(BASE_DISTRO)-$(VERSION) \
 		-t $(IMAGE):latest .
 
