@@ -1,1 +1,41 @@
-../qcow2/config.toml
+# bootc-image-builder customizations for GCE (Google Compute Engine)
+# Docs: https://github.com/osbuild/bootc-image-builder#-build-config
+#
+# Build command:
+#   sudo podman run --rm --privileged \
+#     --security-opt label=type:unconfined_t \
+#     -v /var/lib/containers/storage:/var/lib/containers/storage \
+#     -v ./builder/gce:/config:ro \
+#     -v ./output/gce:/output \
+#     quay.io/centos-bootc/bootc-image-builder:latest \
+#     --type raw --rootfs ext4 \
+#     --config /config/config.toml \
+#     ghcr.io/duyhenryer/bootc-testboot:latest
+#
+# After build, package for GCE:
+#   cd output/image && tar -Szcf ../bootc-centos9.tar.gz disk.raw
+
+[[customizations.user]]
+name = "devops"
+key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDiJ7hHdPtK//86y6wFExtQ7cxC7VL88hoLKHuMCnckj duyne"
+groups = ["wheel"]
+
+[[customizations.filesystem]]
+mountpoint = "/"
+minsize = "10 GiB"
+
+[[customizations.filesystem]]
+mountpoint = "/var/data"
+minsize = "5 GiB"
+
+# Production example (uncomment as needed):
+# [[customizations.filesystem]]
+# mountpoint = "/var/lib/mongodb"
+# minsize = "50 GiB"
+#
+# [[customizations.filesystem]]
+# mountpoint = "/var/log"
+# minsize = "10 GiB"
+
+[customizations.kernel]
+append = "console=ttyS0,115200n8"

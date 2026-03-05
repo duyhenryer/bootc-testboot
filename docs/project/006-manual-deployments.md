@@ -54,39 +54,95 @@ aws ec2 register-image \
 
 ## 3. Deploying to Google Cloud Platform (GCE)
 
-GCP requires a `.tar.gz` file containing exactly one file named `disk.raw`. Because our CI generates standard `raw` distributions inside an OCI container, you must pull the `raw` package, extract it, compress it correctly, and then upload it.
+GCP requires a `.tar.gz` file containing exactly one file named `disk.raw`. The GCE deployment flow builds an image with all middleware: nginx, MongoDB 8.0, Redis, and RabbitMQ. You can either build locally or pull the raw artifact from CI.
 
-**Prerequisites:** `gcloud` CLI and `gsutil`.
+**Prerequisites:** `gcloud` CLI, `gsutil`, authenticated to your GCP project.
+
+### Option A: Build locally with bootc-image-builder
+
+**MANDATORY:** Before running `bootc-image-builder`, you must copy your user-built image into root's podman storage using `podman save | sudo podman load`. The builder runs as root and uses root's podman storage, *not* the user's. If you skip this step, the builder will not find your image.
 
 ```bash
-# 1. Pull the raw artifact image
-podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-raw:v3
+# Copy user-built image to root podman storage (REQUIRED)
+podman save ghcr.io/duyhenryer/bootc-testboot:latest | sudo podman load
+```
 
-# 2. Extract the raw disk using a dummy container
-ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-raw:v3 /bin/true)
+```bash
+# Build the raw disk
+mkdir -p output/gce
+sudo podman run --rm --privileged \
+    --security-opt label=type:unconfined_t \
+    -v /var/lib/containers/storage:/var/lib/containers/storage \
+    -v ./builder/gce:/config:ro \
+    -v ./output/gce:/output \
+    quay.io/centos-bootc/bootc-image-builder:latest \
+    --type raw --rootfs ext4 \
+    --config /config/config.toml \
+    ghcr.io/duyhenryer/bootc-testboot:latest
+
+# Package for GCE (must contain exactly "disk.raw")
+cd output/gce/image
+tar -Szcf ../bootc-centos9.tar.gz disk.raw
+```
+
+### Option B: Pull from CI artifacts
+
+```bash
+podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-raw:latest
+ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-raw:latest /bin/true)
 podman cp $ctr:/image/disk.raw ./disk.raw
 podman rm $ctr
-
-# 3. Compress it into the exact tarball format Google expects
-tar -Szcvf bootc-centos9.tar.gz disk.raw
-
-# 4. Upload the tarball to Google Cloud Storage
-gsutil cp ./bootc-centos9.tar.gz gs://my-gcp-bucket/bootc-centos9.tar.gz
-
-# 5. Create a Custom GCE Image from the tarball
-gcloud compute images create "bootc-centos9-custom-v3" \
-    --project="my-project-id" \
-    --source-uri="gs://my-gcp-bucket/bootc-centos9.tar.gz" \
-    --guest-os-features=UEFI_COMPATIBLE,VIRTIO_SCSI_MULTIQUEUE \
-    --description="Bootc OS Custom Image v3"
-
-# 6. Create a VM Instance using the newly registered Image
-gcloud compute instances create "vm-bootc-centos9-testing" \
-    --project="my-project-id" \
-    --zone="asia-southeast1-a" \
-    --machine-type="e2-medium" \
-    --image="bootc-centos9-custom-v3"
+tar -Szcf bootc-centos9.tar.gz disk.raw
 ```
+
+### Upload and deploy
+
+```bash
+# Upload to GCS
+gsutil cp ./output/gce/bootc-centos9.tar.gz \
+    gs://bootc-testboot-drive/bootc-centos9.tar.gz
+
+# Create GCE custom image
+gcloud compute images create "bootc-centos9-v4" \
+    --project="skilled-box-481815-k8" \
+    --source-uri="gs://bootc-testboot-drive/bootc-centos9.tar.gz" \
+    --guest-os-features=UEFI_COMPATIBLE,VIRTIO_SCSI_MULTIQUEUE \
+    --description="bootc CentOS Stream 9 - hello app + nginx + MongoDB 8.0 + Redis + RabbitMQ"
+
+# Create VM instance
+gcloud compute instances create "vm-bootc-test" \
+    --project="skilled-box-481815-k8" \
+    --zone="asia-southeast1-a" \
+    --machine-type="e2-small" \
+    --image="bootc-centos9-v4" \
+    --boot-disk-size=20GB \
+    --tags=http-server,https-server
+
+# SSH in and verify
+gcloud compute ssh devops@vm-bootc-test \
+    --project=skilled-box-481815-k8 \
+    --zone=asia-southeast1-a \
+    --command="systemctl status hello nginx mongod redis rabbitmq-server && curl -sf http://127.0.0.1:8080/health"
+```
+
+Full VM verification (checks all five services: hello, nginx, mongod, redis, rabbitmq-server):
+
+```bash
+gcloud compute ssh devops@vm-bootc-test \
+    --project=skilled-box-481815-k8 \
+    --zone=asia-southeast1-a \
+    --command="systemctl status hello nginx mongod redis rabbitmq-server && curl -sf http://127.0.0.1:8080/health"
+```
+
+### Bugs found and fixed
+
+The following issues were discovered and resolved during GCE deployment:
+
+| Bug | Fix |
+|-----|-----|
+| sudoers files had 664 permissions (must be 0440) | `chmod 0440` on sudoers.d files |
+| MongoDB 8.0 removed `storage.journal.enabled` option | Removed obsolete config from `mongod.conf` |
+| Redis SELinux: `redis_t` cannot read `usr_t` (config in `/usr/share/`) | systemd override reads Redis config from `/usr/share/` directly instead of symlink |
 
 ---
 

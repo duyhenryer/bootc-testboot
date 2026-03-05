@@ -6,7 +6,8 @@ This directory contains configuration files used exclusively by the `bootc-image
 
 ```
 builder/
-├── qcow2/config.toml    # QCOW2 builder customizations
+├── gce/config.toml       # GCE (Google Compute Engine) builder customizations
+├── qcow2/config.toml     # QCOW2 builder customizations
 ├── vmdk/config.toml      # VMDK builder customizations
 ├── ova/bootc-poc.ovf     # OVF template for OVA packaging (VMDK → OVA)
 └── README.md
@@ -19,6 +20,10 @@ Configurations are split by output format because different environments often r
 - **Disk Partitioning:** e.g., allocating specific storage sizes for `/var/data`.
 - **User Injection:** e.g., injecting SSH keys for `devops` user.
 - **Kernel Boot Arguments:** e.g., serial console parameters.
+
+### `gce/config.toml`
+
+GCE-specific config. Uses `--type raw` with `bootc-image-builder`, then the raw disk is packaged as `tar.gz` for GCE image import. Kernel args include `console=ttyS0,115200n8` for GCE serial console.
 
 ### `qcow2/config.toml` and `vmdk/config.toml`
 
