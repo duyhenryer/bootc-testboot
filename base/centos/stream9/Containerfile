@@ -14,6 +14,7 @@ RUN dnf install -y epel-release \
 
 # --- Production tuning (Rootfs Overlay) ---
 COPY base/rootfs/ /
+RUN chmod 0440 /etc/sudoers.d/wheel-nopasswd
 
 # --- Firewall base rules ---
 RUN firewall-offline-cmd --zone=public --add-port=22/tcp
