@@ -11,6 +11,7 @@ on:
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}
+  BASE_IMAGE: ghcr.io/${{ github.repository }}-base
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -42,13 +43,9 @@ jobs:
     needs: [test]
     permissions:
       contents: read
-      packages: read
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/free-disk-space
-
-      - name: Login to GHCR
-        run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - uses: actions/setup-go@v5
         with:
@@ -56,6 +53,12 @@ jobs:
 
       - name: Build Go applications
         run: make apps
+
+      - name: Build base image (local)
+        run: |
+          podman build --platform linux/amd64 \
+            -f base/centos/stream9/Containerfile \
+            -t ${{ env.BASE_IMAGE }}:centos-stream9-latest .
 
       - name: Build image (amd64 only)
         run: |
