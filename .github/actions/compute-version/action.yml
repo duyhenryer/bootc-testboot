@@ -1,0 +1,35 @@
+name: Compute version
+description: Extract semver from git tag ref, or default to "latest"
+
+inputs:
+  tag-prefix:
+    description: 'Git tag prefix to strip (e.g. "v" for tags like v1.0.0, "base-v" for base-v1.0.0)'
+    required: false
+    default: 'v'
+
+outputs:
+  version:
+    description: 'Resolved version string (e.g. "1.0.0" or "latest")'
+    value: ${{ steps.compute.outputs.version }}
+  is_release:
+    description: '"true" if triggered by a matching version tag, "false" otherwise'
+    value: ${{ steps.compute.outputs.is_release }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute version from git ref
+      id: compute
+      shell: bash
+      run: |
+        PREFIX="${{ inputs.tag-prefix }}"
+        if [[ "$GITHUB_REF" == refs/tags/${PREFIX}* ]]; then
+          VERSION="${GITHUB_REF#refs/tags/${PREFIX}}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "is_release=true" >> "$GITHUB_OUTPUT"
+          echo "Release version: ${VERSION}"
+        else
+          echo "version=latest" >> "$GITHUB_OUTPUT"
+          echo "is_release=false" >> "$GITHUB_OUTPUT"
+          echo "Development build: latest"
+        fi
