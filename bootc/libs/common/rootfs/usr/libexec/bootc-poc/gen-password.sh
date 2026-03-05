@@ -19,5 +19,10 @@ if [ -f "$OUTPUT_FILE" ]; then
 fi
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"
-tr -dc 'A-Za-z0-9!@#%^&*' </dev/urandom | head -c "$LENGTH" > "$OUTPUT_FILE"
-chmod 0600 "$OUTPUT_FILE"
+
+TMPFILE=$(mktemp "$(dirname "$OUTPUT_FILE")/.pw-XXXXXX")
+chmod 0600 "$TMPFILE"
+openssl rand -base64 "$LENGTH" | tr -d '\n' | head -c "$LENGTH" > "$TMPFILE"
+
+mv -n "$TMPFILE" "$OUTPUT_FILE" 2>/dev/null || true
+rm -f "$TMPFILE"
