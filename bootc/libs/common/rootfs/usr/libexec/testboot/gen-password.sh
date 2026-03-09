@@ -24,7 +24,8 @@ mkdir -p "$(dirname "$OUTPUT_FILE")"
 
 TMPFILE=$(mktemp "$(dirname "$OUTPUT_FILE")/.pw-XXXXXX")
 chmod 0600 "$TMPFILE"
-openssl rand -base64 "$LENGTH" | tr -d '\n' | head -c "$LENGTH" > "$TMPFILE"
+PW=$(openssl rand -base64 "$LENGTH" | tr -d '\n')
+printf '%s' "${PW:0:$LENGTH}" > "$TMPFILE"
 
 mv -n "$TMPFILE" "$OUTPUT_FILE" 2>/dev/null || true
 rm -f "$TMPFILE"
