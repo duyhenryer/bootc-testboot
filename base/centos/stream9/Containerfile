@@ -28,10 +28,11 @@ RUN useradd -r -m -d /var/home/appuser -s /bin/bash appuser && \
 # not systemd-resolved (which is not shipped in the minimal bootc image).
 RUN systemctl enable cloud-init sshd firewalld chronyd NetworkManager
 
-# --- Clean /var artifacts from package install + useradd (bootc lint requires no files in /var) ---
+# --- Clean /var and /run artifacts from package install + useradd ---
 RUN rm -rf /var/home/appuser/.bash* \
     /var/lib/rhsm/productid.js /var/lib/rhsm/repo_server_val \
-    /var/roothome/buildinfo
+    /var/roothome/buildinfo \
+    /run/cloud-init /run/rhsm
 
 # --- Validate ---
 RUN bootc container lint

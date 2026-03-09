@@ -64,9 +64,12 @@ RUN for svc in /usr/lib/systemd/system/*.service; do \
       fi; \
     done
 
-# --- Clean /var artifacts from package install (bootc lint requires no files in /var) ---
+# --- Clean /var and /run artifacts from package install + overlay layer merges ---
 RUN rm -f /var/log/mongodb/mongod.log && \
-    rm -rf /var/lib/rhsm/productid.js /var/lib/rhsm/repo_server_val
+    rm -rf /var/lib/rhsm/productid.js /var/lib/rhsm/repo_server_val \
+    /var/home/appuser/.bash* \
+    /var/roothome/buildinfo \
+    /run/cloud-init /run/mongodb /run/rhsm
 
 # --- Validate ---
 RUN bootc container lint
