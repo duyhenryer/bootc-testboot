@@ -7,14 +7,16 @@
 #   length:      Password length (default: 32)
 #
 # Example in a systemd unit:
-#   ExecStartPre=/usr/libexec/bootc-poc/gen-password.sh /var/lib/myapp/db-password 48
+#   ExecStartPre=/usr/libexec/testboot/gen-password.sh /var/lib/myapp/db-password 48
 
 set -euo pipefail
+source /usr/libexec/testboot/log.sh
 
 OUTPUT_FILE="${1:?Usage: gen-password.sh <output-file> [length]}"
 LENGTH="${2:-32}"
 
 if [ -f "$OUTPUT_FILE" ]; then
+    log_info "Password file already exists: $OUTPUT_FILE"
     exit 0
 fi
 
@@ -26,3 +28,5 @@ openssl rand -base64 "$LENGTH" | tr -d '\n' | head -c "$LENGTH" > "$TMPFILE"
 
 mv -n "$TMPFILE" "$OUTPUT_FILE" 2>/dev/null || true
 rm -f "$TMPFILE"
+
+log_info "Generated password -> $OUTPUT_FILE"

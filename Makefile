@@ -120,7 +120,7 @@ test-integration: build ## Integration test: run app in read-only mode (simulate
 		$(IMAGE):latest bash -c '\
 		echo "--- Verifying tmpfiles.d creates /var dirs ---"; \
 		systemd-tmpfiles --create 2>/dev/null; \
-		for d in /var/log/nginx /var/lib/bootc-poc; do \
+		for d in /var/log/nginx /var/lib/testboot; do \
 			if test -d $$d; then echo "  OK: $$d"; \
 			else echo "  FAIL: $$d not created"; exit 1; fi; \
 		done; \

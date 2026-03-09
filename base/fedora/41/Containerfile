@@ -13,6 +13,7 @@ RUN dnf install -y \
 
 # --- Production tuning (Rootfs Overlay) ---
 COPY base/rootfs/ /
+RUN chmod 0440 /etc/sudoers.d/wheel-nopasswd
 
 # --- Firewall base rules ---
 RUN firewall-offline-cmd --zone=public --add-port=22/tcp
@@ -24,5 +25,11 @@ RUN useradd -r -m -d /var/home/appuser -s /bin/bash appuser && \
 # --- Enable base services ---
 RUN systemctl enable cloud-init sshd firewalld chronyd systemd-resolved NetworkManager
 
+# --- Clean /var artifacts from package install + useradd (bootc lint requires no files in /var) ---
+RUN rm -rf /var/home/appuser/.bash* \
+    /var/lib/rhsm/productid.js /var/lib/rhsm/repo_server_val \
+    /var/roothome/buildinfo
+
 # --- Validate ---
+RUN bootc container lint
 LABEL containers.bootc=1

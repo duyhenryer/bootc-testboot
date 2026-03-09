@@ -144,7 +144,7 @@ ALL SMOKE TESTS PASSED
 | Sub-check | What | Pass criteria |
 |-----------|------|---------------|
 | tmpfiles.d | `/var/log/nginx` created by `systemd-tmpfiles --create` | Directory exists |
-| tmpfiles.d | `/var/lib/bootc-poc` created by `systemd-tmpfiles --create` | Directory exists |
+| tmpfiles.d | `/var/lib/testboot` created by `systemd-tmpfiles --create` | Directory exists |
 | App health | `hello` starts and responds to `/health` | HTTP response contains "ok" |
 
 - **Expected output:**
@@ -152,7 +152,7 @@ ALL SMOKE TESTS PASSED
 ```
 --- Verifying tmpfiles.d creates /var dirs ---
   OK: /var/log/nginx
-  OK: /var/lib/bootc-poc
+  OK: /var/lib/testboot
 --- Starting hello service directly ---
   OK: hello /health responded
 ALL INTEGRATION TESTS PASSED
@@ -190,14 +190,14 @@ podman run --rm <image> ls -la /etc/nginx/nginx.conf /etc/nginx/conf.d
 ```bash
 podman run --rm <image> bash -c '
   ls -la /usr/bin/hello
-  ls -la /usr/libexec/bootc-poc/
+  ls -la /usr/libexec/testboot/
 '
 ```
 
 - **Expected:**
   - `/usr/bin/hello` -- executable (`-rwxr-xr-x` or similar)
-  - `/usr/libexec/bootc-poc/gen-password.sh` -- executable
-  - `/usr/libexec/bootc-poc/wait-for-service.sh` -- executable
+  - `/usr/libexec/testboot/gen-password.sh` -- executable
+  - `/usr/libexec/testboot/wait-for-service.sh` -- executable
 
 ### TC-08c: systemd Unit Files and Enablement
 
@@ -232,7 +232,7 @@ podman run --rm <image> bash -c '
 ```bash
 podman run --rm <image> bash -c '
   cat /usr/lib/tmpfiles.d/base-requirements.conf
-  cat /usr/lib/tmpfiles.d/bootc-poc-common.conf
+  cat /usr/lib/tmpfiles.d/testboot-common.conf
   cat /usr/lib/tmpfiles.d/nginx.conf
   cat /usr/lib/tmpfiles.d/mongodb.conf
   cat /usr/lib/tmpfiles.d/redis.conf
@@ -246,7 +246,7 @@ podman run --rm <image> bash -c '
 | File | Directories declared |
 |------|---------------------|
 | `base-requirements.conf` | `/var/lib/cloud`, `/var/lib/dhcpcd`, `/var/lib/dhclient`, `/var/lib/pcp`, `/var/lib/rhsm`, `/var/home/appuser` |
-| `bootc-poc-common.conf` | `/var/lib/bootc-poc` |
+| `testboot-common.conf` | `/var/lib/testboot`, `/var/log/testboot` |
 | `nginx.conf` | `/var/lib/nginx`, `/var/lib/nginx/tmp`, `/var/log/nginx` |
 | `mongodb.conf` | `/var/lib/mongodb`, `/var/log/mongodb` |
 | `redis.conf` | `/var/lib/redis`, `/var/log/redis` |

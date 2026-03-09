@@ -105,7 +105,7 @@ make test-integration
 ==> Integration testing ghcr.io/duyhenryer/bootc-testboot:latest (read-only /usr)
 --- Verifying tmpfiles.d creates /var dirs ---
   OK: /var/log/nginx
-  OK: /var/lib/bootc-poc
+  OK: /var/lib/testboot
 --- Starting hello service directly ---
   OK: hello /health responded
 ALL INTEGRATION TESTS PASSED

@@ -76,7 +76,7 @@ Everything in `/usr` is atomically swapped to the new image version:
 | Configs | `/usr/share/nginx/nginx.conf` | Replaced with new version |
 | systemd units | `/usr/lib/systemd/system/hello.service` | Replaced with new version |
 | tmpfiles.d | `/usr/lib/tmpfiles.d/mongodb.conf` | Replaced with new version |
-| Libraries | `/usr/libexec/bootc-poc/*.sh` | Replaced with new version |
+| Libraries | `/usr/libexec/testboot/*.sh` | Replaced with new version |
 
 This is the core value: **one upgrade replaces all code, all configs, all units atomically**.
 

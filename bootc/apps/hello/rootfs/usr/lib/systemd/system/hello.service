@@ -9,6 +9,7 @@ DynamicUser=yes
 StateDirectory=hello
 LogsDirectory=hello
 ExecStart=/usr/bin/hello
+ExecStartPost=/usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8080/health 10
 Restart=always
 RestartSec=5
 
