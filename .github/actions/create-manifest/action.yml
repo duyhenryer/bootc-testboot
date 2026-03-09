@@ -1,0 +1,68 @@
+name: Create multi-platform manifest
+description: Create and push multi-arch podman manifests to GHCR for one or more distros
+
+inputs:
+  image:
+    description: 'Full image name (e.g. ghcr.io/org/repo)'
+    required: true
+  distros:
+    description: 'Comma-separated distro names (e.g. centos-stream9 or centos-stream9,fedora-41)'
+    required: true
+  version:
+    description: 'Version string (e.g. "1.0.0" or "latest")'
+    required: true
+  platforms:
+    description: 'Comma-separated platforms (e.g. linux/amd64,linux/arm64)'
+    required: false
+    default: 'linux/amd64,linux/arm64'
+  github-token:
+    description: 'GitHub token for GHCR login'
+    required: true
+  github-actor:
+    description: 'GitHub actor for GHCR login'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Login to GHCR
+      shell: bash
+      run: echo "${{ inputs.github-token }}" | podman login ghcr.io -u "${{ inputs.github-actor }}" --password-stdin
+
+    - name: Create and push manifests
+      shell: bash
+      run: |
+        set -euo pipefail
+        IMAGE="${{ inputs.image }}"
+        VERSION="${{ inputs.version }}"
+
+        IFS=',' read -ra PLATFORM_ARRAY <<< "${{ inputs.platforms }}"
+        ARCHS=()
+        for PLATFORM in "${PLATFORM_ARRAY[@]}"; do
+          ARCHS+=("${PLATFORM#linux/}")
+        done
+
+        DISTROS_RAW="${{ inputs.distros }}"
+        DISTROS_CLEAN=$(echo "$DISTROS_RAW" | sed 's/\[//g; s/\]//g; s/"//g; s/ //g')
+        IFS=',' read -ra DISTROS <<< "$DISTROS_CLEAN"
+
+        MANIFEST_TAGS=("latest")
+        if [ "$VERSION" != "latest" ]; then
+          MANIFEST_TAGS+=("$VERSION")
+        fi
+
+        for DISTRO in "${DISTROS[@]}"; do
+          for TAG in "${MANIFEST_TAGS[@]}"; do
+            MANIFEST_TAG="${DISTRO}-${TAG}"
+            echo "==> Creating manifest ${IMAGE}:${MANIFEST_TAG}"
+
+            podman manifest create "${IMAGE}:${MANIFEST_TAG}"
+            for ARCH in "${ARCHS[@]}"; do
+              echo "    Adding ${IMAGE}:${DISTRO}-${TAG}-${ARCH}"
+              podman manifest add "${IMAGE}:${MANIFEST_TAG}" "docker://${IMAGE}:${DISTRO}-${TAG}-${ARCH}"
+            done
+
+            podman manifest push "${IMAGE}:${MANIFEST_TAG}" "docker://${IMAGE}:${MANIFEST_TAG}"
+            podman manifest rm "${IMAGE}:${MANIFEST_TAG}" || true
+          done
+        done

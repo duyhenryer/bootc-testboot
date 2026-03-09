@@ -10,10 +10,11 @@ RUN dnf install -y epel-release \
         htop curl jq lsof tcpdump sysstat vim-minimal \
         cloud-init openssh-server firewalld chrony \
     && dnf clean all \
-    && rm -rf /var/cache/{dnf,ldconfig} /var/log/dnf*
+    && rm -rf /var/cache/{dnf,ldconfig} /var/log/{dnf*,hawkey*,rhsm} /var/lib/dnf
 
 # --- Production tuning (Rootfs Overlay) ---
 COPY base/rootfs/ /
+RUN chmod 0440 /etc/sudoers.d/wheel-nopasswd
 
 # --- Firewall base rules ---
 RUN firewall-offline-cmd --zone=public --add-port=22/tcp
@@ -27,5 +28,12 @@ RUN useradd -r -m -d /var/home/appuser -s /bin/bash appuser && \
 # not systemd-resolved (which is not shipped in the minimal bootc image).
 RUN systemctl enable cloud-init sshd firewalld chronyd NetworkManager
 
+# --- Clean /var and /run artifacts from package install + useradd ---
+RUN rm -rf /var/home/appuser/.bash* \
+    /var/lib/rhsm/productid.js /var/lib/rhsm/repo_server_val \
+    /var/roothome/buildinfo \
+    /run/cloud-init /run/rhsm
+
 # --- Validate ---
+RUN bootc container lint
 LABEL containers.bootc=1

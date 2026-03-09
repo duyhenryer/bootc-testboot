@@ -1,5 +1,4 @@
-.PHONY: base apps build test lint lint-strict ami vmdk ova gce qcow2 \
-       help clean
+.PHONY: base apps build test lint lint-strict test-smoke test-integration help clean
 
 # ---------------------------------------------------------------------------
 # Variables (override via env or command line)
@@ -7,7 +6,9 @@
 REGISTRY   ?= ghcr.io/duyhenryer
 IMAGE      ?= $(REGISTRY)/bootc-testboot
 BASE_IMAGE ?= $(REGISTRY)/bootc-testboot-base
-VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION    ?= latest
+BASE_IMAGE_VERSION ?= latest
+GIT_SHA    ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 PODMAN     ?= podman
 
 # Base distro selection (centos-stream9 | centos-stream10 | fedora-40 | fedora-41)
@@ -20,10 +21,6 @@ BASE_MAP_fedora-40       = base/fedora/40/Containerfile
 BASE_MAP_fedora-41       = base/fedora/41/Containerfile
 BASE_FILE = $(BASE_MAP_$(BASE_DISTRO))
 
-# Cloud config
-AWS_REGION ?= ap-southeast-1
-AWS_BUCKET ?= my-bootc-poc-bucket
-
 # ---------------------------------------------------------------------------
 # Base Image (Layer 1: OS + tuning, build weekly)
 # ---------------------------------------------------------------------------
@@ -35,8 +32,8 @@ base: ## Build base image (BASE_DISTRO=centos-stream9|fedora-41|...)
 		exit 1; \
 	fi
 	$(PODMAN) build -f $(BASE_FILE) \
-		-t $(BASE_IMAGE)-$(BASE_DISTRO):$(VERSION) \
-		-t $(BASE_IMAGE)-$(BASE_DISTRO):latest .
+		-t $(BASE_IMAGE):$(BASE_DISTRO)-$(VERSION) \
+		-t $(BASE_IMAGE):$(BASE_DISTRO)-latest .
 
 # ---------------------------------------------------------------------------
 # Apps (build Go binaries to output/bin/)
@@ -70,33 +67,70 @@ build: apps ## Build application image (uses base, BASE_DISTRO=centos-stream9|..
 	$(PODMAN) build \
 		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
 		--build-arg BASE_DISTRO=$(BASE_DISTRO) \
+		--build-arg BASE_IMAGE_VERSION=$(BASE_IMAGE_VERSION) \
+		--build-arg GIT_SHA=$(GIT_SHA) \
 		-t $(IMAGE):$(BASE_DISTRO)-$(VERSION) \
 		-t $(IMAGE):latest .
 
 lint: ## Run bootc container lint on the built image
 	$(PODMAN) run --rm $(IMAGE):latest bootc container lint
 
-lint-strict: ## Run bootc container lint --fatal-warnings
+lint-strict: ## Run bootc container lint --fatal-warnings (used in CI)
 	$(PODMAN) run --rm $(IMAGE):latest bootc container lint --fatal-warnings
 
 # ---------------------------------------------------------------------------
-# Disk Images (bootc-image-builder)
+# Local Testing (no cloud deploy needed)
 # ---------------------------------------------------------------------------
 
-ami: ## Create AMI via bootc-image-builder (auto-upload to AWS)
-	scripts/create-image.sh ami
+EXPECTED_BINS ?= hello
+EXPECTED_SVCS ?= hello nginx
 
-vmdk: ## Create VMDK disk image
-	scripts/create-image.sh vmdk
+test-smoke: build ## Smoke test: verify image contents (binaries, units, configs, lint)
+	@echo "==> Smoke testing $(IMAGE):latest"
+	@$(PODMAN) run --rm $(IMAGE):latest bash -c '\
+		FAIL=0; \
+		echo "--- Checking binaries ---"; \
+		for bin in $(EXPECTED_BINS); do \
+			if test -x /usr/bin/$$bin; then echo "  OK: /usr/bin/$$bin"; \
+			else echo "  FAIL: /usr/bin/$$bin missing"; FAIL=1; fi; \
+		done; \
+		echo "--- Checking systemd units ---"; \
+		for svc in $(EXPECTED_SVCS); do \
+			if systemctl is-enabled $$svc >/dev/null 2>&1; then echo "  OK: $$svc enabled"; \
+			else echo "  FAIL: $$svc not enabled"; FAIL=1; fi; \
+		done; \
+		echo "--- Checking immutable configs ---"; \
+		for f in /usr/share/nginx/nginx.conf /usr/share/nginx/conf.d/hello.conf; do \
+			if test -f $$f; then echo "  OK: $$f"; \
+			else echo "  FAIL: $$f missing"; FAIL=1; fi; \
+		done; \
+		echo "--- Running bootc lint ---"; \
+		bootc container lint || FAIL=1; \
+		echo "---"; \
+		if [ $$FAIL -eq 0 ]; then echo "ALL SMOKE TESTS PASSED"; \
+		else echo "SMOKE TESTS FAILED"; exit 1; fi'
 
-qcow2: ## Create qcow2 for KVM/libvirt testing
-	scripts/create-image.sh qcow2
-
-gce: ## Create GCE image (build + upload to GCP)
-	scripts/create-image.sh gce
-
-ova: vmdk ## Create OVA from VMDK (VMDK + OVF -> .ova tar)
-	scripts/create-ova.sh
+test-integration: build ## Integration test: run app in read-only mode (simulates production)
+	@echo "==> Integration testing $(IMAGE):latest (read-only /usr)"
+	@$(PODMAN) run --rm \
+		--read-only \
+		--tmpfs /var:rw,nosuid,nodev \
+		--tmpfs /run:rw,nosuid,nodev \
+		--tmpfs /tmp:rw,nosuid,nodev \
+		$(IMAGE):latest bash -c '\
+		echo "--- Verifying tmpfiles.d creates /var dirs ---"; \
+		systemd-tmpfiles --create 2>/dev/null; \
+		for d in /var/log/nginx /var/lib/testboot; do \
+			if test -d $$d; then echo "  OK: $$d"; \
+			else echo "  FAIL: $$d not created"; exit 1; fi; \
+		done; \
+		echo "--- Starting hello service directly ---"; \
+		/usr/bin/hello & PID=$$!; sleep 1; \
+		RESP=$$(curl -sf http://127.0.0.1:8080/health 2>/dev/null); \
+		kill $$PID 2>/dev/null; \
+		if echo "$$RESP" | grep -q "ok"; then echo "  OK: hello /health responded"; \
+		else echo "  FAIL: hello /health did not respond"; exit 1; fi; \
+		echo "ALL INTEGRATION TESTS PASSED"'
 
 # ---------------------------------------------------------------------------
 # Helpers

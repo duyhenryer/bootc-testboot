@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "Containerfile"
+      - "repos/**"
+      - "base/**"
+      - "bootc/**"
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+  BASE_IMAGE: ghcr.io/${{ github.repository }}-base
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Go tests
+  # ---------------------------------------------------------------------------
+  test:
+    name: Go tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Run tests
+        run: |
+          for d in repos/*/; do
+            if [ -f "$d/go.mod" ]; then
+              echo "==> Testing $d"
+              (cd "$d" && go test -v ./...)
+            fi
+          done
+
+  # ---------------------------------------------------------------------------
+  # PR check: build + strict lint (no push)
+  # ---------------------------------------------------------------------------
+  pr-check:
+    name: PR check (build + lint)
+    runs-on: ubuntu-latest
+    needs: [test]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/free-disk-space
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build Go applications
+        run: make apps
+
+      - name: Build base image (local)
+        run: |
+          podman build --platform linux/amd64 \
+            -f base/centos/stream9/Containerfile \
+            -t ${{ env.BASE_IMAGE }}:centos-stream9-latest .
+
+      - name: Build image (amd64 only)
+        run: |
+          podman build --platform linux/amd64 \
+            --build-arg BASE_DISTRO=centos-stream9 \
+            -t ${{ env.IMAGE }}:pr-check \
+            -f Containerfile .
+
+      - name: Strict lint
+        run: podman run --rm ${{ env.IMAGE }}:pr-check bootc container lint --fatal-warnings

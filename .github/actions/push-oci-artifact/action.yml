@@ -1,0 +1,54 @@
+name: Push OCI artifact
+description: Package a directory as a scratch OCI image and push to GHCR
+
+inputs:
+  source-dir:
+    description: 'Directory to package (e.g. output, output/ova)'
+    required: true
+  image:
+    description: 'Full artifact image name (e.g. ghcr.io/org/repo-centos-stream9-vmdk)'
+    required: true
+  version:
+    description: 'Version string (e.g. "1.0.0" or "latest")'
+    required: true
+  arch:
+    description: 'Architecture suffix (e.g. amd64, arm64)'
+    required: true
+  github-token:
+    description: 'GitHub token for GHCR login'
+    required: true
+  github-actor:
+    description: 'GitHub actor for GHCR login'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Build and push OCI artifact
+      shell: bash
+      run: |
+        set -euo pipefail
+        SOURCE_DIR="${{ inputs.source-dir }}"
+        IMAGE="${{ inputs.image }}"
+        VERSION="${{ inputs.version }}"
+        ARCH="${{ inputs.arch }}"
+
+        cat > "${SOURCE_DIR}/Containerfile.scratch" <<'SCRATCH'
+        FROM scratch
+        COPY . /
+        SCRATCH
+
+        LATEST_TAG="${IMAGE}:latest-${ARCH}"
+        TAGS="--tag ${LATEST_TAG}"
+        if [ "$VERSION" != "latest" ]; then
+          TAGS="${TAGS} --tag ${IMAGE}:${VERSION}-${ARCH}"
+        fi
+
+        cd "${SOURCE_DIR}"
+        sudo buildah bud ${TAGS} -f Containerfile.scratch .
+
+        echo "${{ inputs.github-token }}" | sudo buildah login ghcr.io -u "${{ inputs.github-actor }}" --password-stdin
+        sudo buildah push "${LATEST_TAG}"
+        if [ "$VERSION" != "latest" ]; then
+          sudo buildah push "${IMAGE}:${VERSION}-${ARCH}"
+        fi
