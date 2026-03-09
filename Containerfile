@@ -27,14 +27,14 @@ RUN rpm --import https://pgp.mongodb.com/server-8.0.asc && \
     rpm --import https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-server.9F4587F226208342.key
 
 # --- Middleware (version pinned per product release) ---
-RUN dnf install -y \
-        nginx \
-        redis \
-        mongodb-org-server \
-        erlang rabbitmq-server \
-    && dnf clean all \
-    && rm -rf /var/cache/{dnf,ldconfig} \
-    && rm -rf /var/log/{dnf*,hawkey*,rhsm} /var/lib/dnf
+# RabbitMQ/Erlang: upstream only publishes x86_64 RPMs, skip on arm64.
+RUN dnf install -y nginx redis mongodb-org-server && \
+    if [ "$(uname -m)" = "x86_64" ]; then \
+        dnf install -y erlang rabbitmq-server; \
+    fi && \
+    dnf clean all && \
+    rm -rf /var/cache/{dnf,ldconfig} && \
+    rm -rf /var/log/{dnf*,hawkey*,rhsm} /var/lib/dnf
 
 # --- Pre-built app binaries (from output/bin/) ---
 COPY output/bin/ /usr/bin/
@@ -45,8 +45,10 @@ RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf && \
     ln -sf /usr/share/nginx/conf.d /etc/nginx/conf.d && \
     ln -sf /usr/share/mongodb/mongod.conf /etc/mongod.conf && \
     ln -sf /usr/share/redis/redis.conf /etc/redis/redis.conf && \
-    mkdir -p /etc/rabbitmq && \
-    ln -sf /usr/share/rabbitmq/rabbitmq.conf /etc/rabbitmq/rabbitmq.conf
+    if [ "$(uname -m)" = "x86_64" ]; then \
+        mkdir -p /etc/rabbitmq && \
+        ln -sf /usr/share/rabbitmq/rabbitmq.conf /etc/rabbitmq/rabbitmq.conf; \
+    fi
 
 # --- SELinux: allow nginx to proxy to upstream apps ---
 RUN setsebool -P httpd_can_network_connect 1 || true
@@ -54,8 +56,11 @@ RUN setsebool -P httpd_can_network_connect 1 || true
 # --- Firewall rules ---
 RUN firewall-offline-cmd --zone=public \
     --add-port=80/tcp --add-port=443/tcp --add-port=8080/tcp \
-    --add-port=6379/tcp --add-port=27017/tcp \
-    --add-port=5672/tcp --add-port=15672/tcp
+    --add-port=6379/tcp --add-port=27017/tcp && \
+    if [ "$(uname -m)" = "x86_64" ]; then \
+        firewall-offline-cmd --zone=public \
+            --add-port=5672/tcp --add-port=15672/tcp; \
+    fi
 
 # --- Auto-enable all services that declare WantedBy= ---
 RUN for svc in /usr/lib/systemd/system/*.service; do \
