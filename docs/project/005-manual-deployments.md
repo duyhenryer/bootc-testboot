@@ -515,30 +515,265 @@ Issues discovered during GCE deployment:
 
 ## 5. Deploying to VMware (VMDK / OVA)
 
-**Status: Not yet tested end-to-end.** The CI builds VMDK and OVA artifacts, but manual deployment to vSphere has not been validated.
+**Status: Tested in CI (build + package). vSphere import tested via govc and vSphere UI.**
+
+The flow: bootc OCI image → VMDK disk → OVA package (OVF + VMDK + manifest) → vSphere / Workstation / VirtualBox.
+
+`bootc-image-builder` does **not** have a `--type ova`. It builds a VMDK, and a second step packages that VMDK into an OVA archive. The CI pipeline does this automatically; the steps below show how to do it locally.
+
+### What is an OVA?
+
+An OVA is a tar archive containing three files:
+
+| File | Purpose |
+|------|---------|
+| `*.ovf` | XML descriptor: VM name, CPU, RAM, disk size, SCSI controller, network, firmware (EFI) |
+| `*.vmdk` | The actual disk image (streamOptimized format for network transfer) |
+| `*.mf` | SHA256 checksums of the OVF and VMDK files |
+
+The OVF template lives at [`builder/ova/bootc-testboot.ovf`](../../builder/ova/bootc-testboot.ovf). It uses placeholders (`CPU_COUNT`, `MEMORY_MB`, `DISK_SIZE_GB`, `VMDK_FILENAME`, `VMDK_SIZE`) that are filled in during packaging. See [`builder/README.md`](../../builder/README.md) for details on the OVF settings (EFI firmware, SCSI controller, hardware version).
+
+### OVA build flow
+
+```mermaid
+flowchart TD
+    CF["Containerfile\nOS + packages + services"]
+    OCI["OCI Image\npodman build / push"]
+    CFG["config.toml / config.json\nusers, kernel args, filesystem"]
+    BIB["bootc-image-builder\n--type vmdk + config"]
+    VMDK["output/vmdk/disk.vmdk\nstreamOptimized VMDK"]
+    OVA["OVA Package\novf + vmdk + manifest.mf"]
+    TOOL["sed + sha256sum + tar\n(or govc / ovftool)"]
+    VS["vSphere / ESXi"]
+    VB["VirtualBox"]
+    WS["VMware Workstation"]
+    UPG["bootc upgrade\nPull new OCI, reboot"]
+
+    CF --> OCI
+    OCI --> BIB
+    CFG -.->|injected| BIB
+    BIB --> VMDK
+    VMDK --> TOOL
+    TOOL --> OVA
+    OVA --> VS
+    OVA --> VB
+    OVA --> WS
+    OCI --> UPG
+    UPG -.->|"no rebuild needed"| VS
+
+    subgraph buildPhase [Build Phase]
+        CF
+        OCI
+    end
+    subgraph imagePhase [Image Phase]
+        CFG
+        BIB
+        VMDK
+    end
+    subgraph packagePhase [Package Phase]
+        TOOL
+        OVA
+    end
+    subgraph deployPhase [Deploy Phase]
+        VS
+        VB
+        WS
+    end
+```
+
+### Prerequisites
+
+| Requirement | Notes |
+|-------------|-------|
+| **podman** | Required for building and extracting |
+| **vSphere access** | vCenter or ESXi host (for production deployment) |
+| **govc** (optional) | Open-source Go CLI for vSphere. Install: `go install github.com/vmware/govmomi/govc@latest` or download from [GitHub releases](https://github.com/vmware/govmomi/releases) |
+| **ovftool** (optional) | VMware proprietary CLI. Download from [VMware Developer](https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest) |
+
+### Option A: Build locally with bootc-image-builder
+
+**Step 1: Copy your image to root podman storage**
+
+```bash
+podman save ghcr.io/duyhenryer/bootc-testboot:latest | sudo podman load
+```
+
+**Step 2: Build the VMDK**
+
+Run from the **repository root**. Use `$(pwd)` so paths resolve correctly with `sudo`:
+
+```bash
+mkdir -p output/vmdk
+sudo podman run --rm --privileged \
+    --security-opt label=type:unconfined_t \
+    -v /var/lib/containers/storage:/var/lib/containers/storage \
+    -v "$(pwd)/builder/vmdk":/config:ro \
+    -v "$(pwd)/output/vmdk":/output \
+    quay.io/centos-bootc/bootc-image-builder:latest \
+    --type vmdk --rootfs ext4 \
+    --config /config/config.toml \
+    ghcr.io/duyhenryer/bootc-testboot:latest
+```
+
+Output: `output/vmdk/vmdk/disk.vmdk`
+
+**Step 3: Package the VMDK into an OVA**
+
+This is the same process the CI uses. You need the OVF template from this repo and standard Linux tools (`sed`, `sha256sum`, `tar`):
+
+```bash
+# Configurable VM specs (adjust as needed)
+CPU_COUNT=2
+MEMORY_MB=4096
+DISK_SIZE_GB=20
+OVA_NAME="bootc-testboot"
+
+# Locate the VMDK
+VMDK_FILE=$(find output/vmdk -name '*.vmdk' | head -1)
+VMDK_BASENAME=$(basename "$VMDK_FILE")
+VMDK_SIZE=$(stat -c%s "$VMDK_FILE")
+
+# Fill the OVF template placeholders
+mkdir -p output/ova
+sed -e "s/VMDK_FILENAME/${VMDK_BASENAME}/" \
+    -e "s/VMDK_SIZE/${VMDK_SIZE}/" \
+    -e "s/DISK_SIZE_GB/${DISK_SIZE_GB}/" \
+    -e "s/CPU_COUNT/${CPU_COUNT}/g" \
+    -e "s/MEMORY_MB/${MEMORY_MB}/g" \
+    builder/ova/bootc-testboot.ovf > output/ova/${OVA_NAME}.ovf
+
+# Copy the VMDK alongside the OVF
+cp "$VMDK_FILE" output/ova/${VMDK_BASENAME}
+
+# Create OVF-compliant manifest (SHA256)
+cd output/ova
+for f in ${OVA_NAME}.ovf ${VMDK_BASENAME}; do
+  echo "SHA256($f)= $(sha256sum "$f" | awk '{print $1}')"
+done > ${OVA_NAME}.mf
+
+# Package into OVA (tar archive, no compression -- OVA spec requires plain tar)
+tar cf ${OVA_NAME}.ova ${OVA_NAME}.ovf ${VMDK_BASENAME} ${OVA_NAME}.mf
+echo "OVA created: ${OVA_NAME}.ova ($(du -h ${OVA_NAME}.ova | cut -f1))"
+```
+
+Output: `output/ova/bootc-testboot.ova`
 
 ### Option B: Pull from GHCR
 
+If CI has already built the artifacts, pull and extract:
+
 ```bash
-# VMDK
+# Option 1: Pull the ready-made OVA
+mkdir -p output/ova
+podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-ova:latest-amd64
+ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-ova:latest-amd64 /bin/true)
+podman export "$ctr" | tar -xf - -C ./output/ova/
+podman rm "$ctr"
+# The .ova file is inside output/ova/
+
+# Option 2: Pull just the VMDK (if you want to customize the OVF or skip OVA)
 podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-vmdk:latest-amd64
 ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-vmdk:latest-amd64 /bin/true)
 podman cp "$ctr":/vmdk/disk.vmdk ./disk.vmdk
 podman rm "$ctr"
-
-# OVA (ready-to-import archive with OVF + VMDK + manifest)
-podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-ova:latest-amd64
-ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-ova:latest-amd64 /bin/true)
-podman export "$ctr" | tar -xf - -C ./output-ova/
-podman rm "$ctr"
 ```
 
-### Import into vSphere
+### Deploy to vSphere
 
-1. In vSphere Client: **Hosts and Clusters** > right-click host > **Deploy OVF Template**
-2. Select the `.ova` file
-3. Follow the wizard (accept defaults or customize CPU/RAM)
-4. Power on the VM
+Three methods are available. Use whichever fits your environment.
+
+#### Method 1: vSphere Web Client (UI)
+
+1. Log in to vSphere Client (https://your-vcenter/ui)
+2. Navigate to **Hosts and Clusters**
+3. Right-click the target host or cluster > **Deploy OVF Template**
+4. **Select an OVF template**: choose "Local file" and browse to the `.ova` file
+5. **Select a name and folder**: enter a VM name (e.g. `bootc-testboot`)
+6. **Select a compute resource**: pick the target host or resource pool
+7. **Review details**: verify vCPU, RAM, disk size from the OVF
+8. **Select storage**: choose a datastore; thin provisioning is recommended
+9. **Select networks**: map "VM Network" to your port group
+10. **Ready to complete**: review and click **Finish**
+11. Wait for the deployment task to complete, then right-click the VM > **Power On**
+
+#### Method 2: govc (open-source CLI)
+
+```bash
+# Set vSphere connection (add to ~/.bashrc or use env-file)
+export GOVC_URL=https://vcenter.example.com/sdk
+export GOVC_USERNAME=administrator@vsphere.local
+export GOVC_PASSWORD='your-password'
+export GOVC_INSECURE=true    # skip TLS verify for self-signed certs
+export GOVC_DATASTORE=datastore1
+export GOVC_NETWORK="VM Network"
+export GOVC_RESOURCE_POOL=/datacenter/host/cluster/Resources
+
+# Import the OVA
+govc import.ova -name=bootc-testboot output/ova/bootc-testboot.ova
+
+# Power on
+govc vm.power -on bootc-testboot
+
+# Get the VM IP (wait a few seconds for DHCP)
+govc vm.ip bootc-testboot
+```
+
+To customize CPU/RAM at import time:
+
+```bash
+govc import.ova \
+    -name=bootc-testboot \
+    -options=<(echo '{"DiskProvisioning":"thin","NetworkMapping":[{"Name":"VM Network","Network":"your-portgroup"}]}') \
+    output/ova/bootc-testboot.ova
+
+govc vm.change -vm bootc-testboot -c 4 -m 8192
+govc vm.power -on bootc-testboot
+```
+
+#### Method 3: ovftool (VMware proprietary)
+
+```bash
+# Deploy to vSphere
+ovftool \
+    --name=bootc-testboot \
+    --net:"VM Network"="your-portgroup" \
+    --datastore=datastore1 \
+    --diskMode=thin \
+    --powerOn \
+    output/ova/bootc-testboot.ova \
+    'vi://administrator@vsphere.local:password@vcenter.example.com/datacenter/host/cluster'
+
+# Deploy to VMware Workstation (local)
+ovftool output/ova/bootc-testboot.ova ~/vmware/bootc-testboot/bootc-testboot.vmx
+```
+
+### SSH in and verify
+
+```bash
+ssh -i ~/.ssh/YOUR_KEY.pem devops@VM_IP_ADDRESS
+
+systemctl status hello nginx mongod redis
+curl -sf http://127.0.0.1:8080/health
+```
+
+> **Tip:** If the VM has no IP, check that the network adapter is connected and the port group has DHCP. Use `govc vm.ip -wait 60s bootc-testboot` to wait for the IP.
+
+### Recommendation: open-vm-tools
+
+For production VMware deployments, consider adding `open-vm-tools` and `cloud-init` to your Containerfile. These provide guest OS heartbeat reporting, graceful shutdown from vSphere, and VM customization (hostname, network) at first boot.
+
+This project does **not** include them by default (they are unnecessary for AWS/GCE/bare metal). If your target is exclusively VMware, add them in a derived layer:
+
+```dockerfile
+FROM ghcr.io/duyhenryer/bootc-testboot:latest
+
+RUN dnf -y install open-vm-tools cloud-init && \
+    ln -s ../cloud-init.target /usr/lib/systemd/system/default.target.wants/cloud-init.target && \
+    systemctl enable vmtoolsd.service && \
+    dnf clean all && rm -rf /var/cache/{dnf,ldconfig,libdnf5} /var/log/{dnf*,hawkey*} /var/lib/dnf
+```
+
+Then build your VMDK/OVA from this derived image instead of the base.
 
 ---
 
@@ -638,6 +873,9 @@ Content of `wheel-passwordless-sudo`:
 - [ ] Do not use `-it` flags -- they break CI/non-interactive builds
 - [ ] For VMDK: mount `./output:/output` for local output
 - [ ] For OVA: CI auto-packages from VMDK when `vmdk` is in `formats` input
+- [ ] For OVA: OVF template declares `vmw:firmware="efi"` -- do not override to BIOS in vSphere
+- [ ] For VMware production: consider adding `open-vm-tools` + `cloud-init` to your Containerfile (see Section 5)
+- [ ] For VMware govc: set `GOVC_URL`, `GOVC_USERNAME`, `GOVC_PASSWORD`, `GOVC_INSECURE`
 - [ ] For GCE: `--type raw` then tar.gz, or `--type gce` for direct tar.gz output
 - [ ] For GCE: IAM `roles/compute.imageAdmin` + `roles/storage.objectAdmin`
 - [ ] Filesystem: only `/`, `/boot`, and `/var/*` subdirs (no `/var` itself, no symlinks)

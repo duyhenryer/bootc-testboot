@@ -46,7 +46,7 @@ Shared utility scripts and system definitions used by all services and apps.
 | `bootc/libs/common/rootfs/usr/libexec/testboot/gen-password.sh` | `/usr/libexec/testboot/gen-password.sh` | Read-only | Atomic random password generation (idempotent) |
 | `bootc/libs/common/rootfs/usr/libexec/testboot/wait-for-service.sh` | `/usr/libexec/testboot/wait-for-service.sh` | Read-only | TCP readiness probe (polls host:port) |
 | `bootc/libs/common/rootfs/usr/libexec/testboot/healthcheck.sh` | `/usr/libexec/testboot/healthcheck.sh` | Read-only | HTTP health endpoint check |
-| `bootc/libs/common/rootfs/usr/libexec/testboot/render-env.sh` | `/usr/libexec/testboot/render-env.sh` | Read-only | Config template renderer (`@@VAR@@` replacement) |
+| `bootc/libs/common/rootfs/usr/libexec/testboot/gen-tls-cert.sh` | `/usr/libexec/testboot/gen-tls-cert.sh` | Read-only | Self-signed TLS cert generator (CA + server) |
 | `bootc/libs/common/rootfs/usr/lib/sysusers.d/appuser.conf` | `/usr/lib/sysusers.d/appuser.conf` | Read-only | Creates `appuser` user/group at boot |
 | `bootc/libs/common/rootfs/usr/lib/tmpfiles.d/testboot-common.conf` | `/usr/lib/tmpfiles.d/testboot-common.conf` | Read-only | Creates shared `/var` directories at boot |
 
@@ -55,10 +55,13 @@ Shared utility scripts and system definitions used by all services and apps.
 | Source Path | Runtime Path | Zone | Purpose |
 |-------------|-------------|------|---------|
 | `bootc/services/mongodb/rootfs/etc/yum.repos.d/mongodb-org-8.0.repo` | `/etc/yum.repos.d/mongodb-org-8.0.repo` | Mutable | MongoDB 8.0 package repository (needed at build time for `dnf install`) |
-| `bootc/services/mongodb/rootfs/usr/share/mongodb/mongod.conf` | `/usr/share/mongodb/mongod.conf` | Read-only | Immutable MongoDB config |
-| `bootc/services/mongodb/rootfs/usr/lib/systemd/system/mongod.service.d/override.conf` | `/usr/lib/systemd/system/mongod.service.d/override.conf` | Read-only | systemd drop-in: `StateDirectory=`, `LogsDirectory=`, `ExecStartPre=` for password gen |
+| `bootc/services/mongodb/rootfs/usr/share/mongodb/mongod.conf` | `/usr/share/mongodb/mongod.conf` | Read-only | Immutable MongoDB config (rs0 + auth + TLS) |
+| `bootc/services/mongodb/rootfs/usr/lib/systemd/system/mongod.service.d/override.conf` | `/usr/lib/systemd/system/mongod.service.d/override.conf` | Read-only | systemd drop-in: `StateDirectory=`, `LogsDirectory=`, `After=mongodb-setup.service` |
+| `bootc/services/mongodb/rootfs/usr/lib/systemd/system/mongodb-setup.service` | `/usr/lib/systemd/system/mongodb-setup.service` | Read-only | Oneshot (Before=mongod): generates TLS certs, keyFile, admin password |
+| `bootc/services/mongodb/rootfs/usr/lib/systemd/system/mongodb-init.service` | `/usr/lib/systemd/system/mongodb-init.service` | Read-only | Oneshot (After=mongod): rs.initiate() + create admin user |
+| `bootc/services/mongodb/rootfs/usr/libexec/testboot/mongodb-init.sh` | `/usr/libexec/testboot/mongodb-init.sh` | Read-only | Script for replica set init and admin user creation |
 | `bootc/services/mongodb/rootfs/usr/lib/sysusers.d/mongod.conf` | `/usr/lib/sysusers.d/mongod.conf` | Read-only | Creates `mongod` user/group for `bootc container lint` |
-| `bootc/services/mongodb/rootfs/usr/lib/tmpfiles.d/mongodb.conf` | `/usr/lib/tmpfiles.d/mongodb.conf` | Read-only | Creates `/var/lib/mongodb`, `/var/log/mongodb` at boot |
+| `bootc/services/mongodb/rootfs/usr/lib/tmpfiles.d/mongodb.conf` | `/usr/lib/tmpfiles.d/mongodb.conf` | Read-only | Creates `/var/lib/mongodb`, `/var/lib/mongodb/tls`, `/var/log/mongodb` at boot |
 
 Plus a symlink created in the Containerfile: `/etc/mongod.conf` -> `/usr/share/mongodb/mongod.conf`
 

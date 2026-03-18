@@ -26,9 +26,9 @@
     </Network>
   </NetworkSection>
 
-  <VirtualSystem ovf:id="bootc-poc">
+  <VirtualSystem ovf:id="bootc-testboot" vmw:firmware="efi">
     <Info>bootc image-based OS virtual machine</Info>
-    <Name>bootc-poc</Name>
+    <Name>bootc-testboot</Name>
 
     <OperatingSystemSection ovf:id="101" vmw:osType="other5xLinux64Guest">
       <Info>The operating system</Info>
@@ -41,7 +41,7 @@
       <System>
         <vssd:ElementName>Virtual Hardware Family</vssd:ElementName>
         <vssd:InstanceID>0</vssd:InstanceID>
-        <vssd:VirtualSystemIdentifier>bootc-poc</vssd:VirtualSystemIdentifier>
+        <vssd:VirtualSystemIdentifier>bootc-testboot</vssd:VirtualSystemIdentifier>
         <vssd:VirtualSystemType>vmx-14</vssd:VirtualSystemType>
       </System>
 
@@ -65,7 +65,7 @@
         <rasd:VirtualQuantity>MEMORY_MB</rasd:VirtualQuantity>
       </Item>
 
-      <!-- SCSI Controller -->
+      <!-- SCSI Controller (lsilogic for broad compatibility; switch to pvscsi for vSphere 6.5+ performance) -->
       <Item>
         <rasd:Address>0</rasd:Address>
         <rasd:Description>SCSI Controller</rasd:Description>

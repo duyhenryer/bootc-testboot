@@ -347,7 +347,7 @@ bootc-testboot/
 - **Checks:**
   - Every app in `repos/*/` has a corresponding `bootc/apps/*/rootfs/` directory
   - Every service in `bootc/services/*/` has `rootfs/usr/share/<svc>/` config and `rootfs/usr/lib/tmpfiles.d/<svc>.conf`
-  - `.github/workflows/` contains `build-base.yml` and `build-bootc.yml`
+  - `.github/workflows/` contains `build-base.yml`, `build-bootc.yml`, `build-artifacts.yml`, and `ci.yml`
 
 ---
 

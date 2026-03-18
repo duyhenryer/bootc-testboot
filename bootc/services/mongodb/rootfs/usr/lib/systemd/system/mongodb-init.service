@@ -1,0 +1,14 @@
+[Unit]
+Description=MongoDB replica set and admin user init
+After=mongod.service
+Requires=mongod.service
+ConditionPathExists=!/var/lib/mongodb/.rs-initialized
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/libexec/testboot/wait-for-service.sh 127.0.0.1 27017 60
+ExecStart=/usr/libexec/testboot/mongodb-init.sh
+
+[Install]
+WantedBy=multi-user.target

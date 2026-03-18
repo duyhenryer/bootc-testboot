@@ -159,7 +159,7 @@ If you have a QCOW2 from CI, extract it:
 ```bash
 podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-qcow2:latest
 CID=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-qcow2:latest)
-podman cp $CID:/output/qcow2/disk.qcow2 ./disk.qcow2
+podman cp $CID:/qcow2/disk.qcow2 ./disk.qcow2
 podman rm $CID
 ```
 
@@ -256,7 +256,7 @@ make test-smoke EXPECTED_BINS="hello app-api app-worker" EXPECTED_SVCS="hello ap
 
 ## CI Integration
 
-The CI pipeline (`build-bootc.yml`) already runs Level 1 checks on every PR:
+The CI pipeline (`ci.yml`) already runs Level 1 checks on every PR:
 
 ```yaml
 - name: Strict lint

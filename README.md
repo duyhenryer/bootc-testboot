@@ -84,7 +84,7 @@ bootc/
 builder/                   Artifact build configs (per format)
   qcow2/config.toml       QCOW2 builder customizations
   vmdk/config.toml         VMDK builder customizations
-  ova/bootc-poc.ovf        OVF template for OVA packaging
+  ova/bootc-testboot.ovf   OVF template for OVA packaging (EFI)
 repos/
   hello/                   Mock App Source Repository (Go code)
     main.go, go.mod, main_test.go
@@ -239,7 +239,7 @@ How we use bootc to build, test, and deliver our product.
 |-----|-------|
 | [001](docs/project/001-architecture-overview.md) | Architecture Overview |
 | [002](docs/project/002-building-bootc-images.md) | Building Our Images |
-| [003](docs/project/003-poc-walkthrough.md) | POC Walkthrough |
+| [003](docs/project/003-walkthrough.md) | Walkthrough |
 | [004](docs/project/004-runbook.md) | Operations Runbook |
 | [005](docs/project/005-manual-deployments.md) | Manual VM Deployments (includes bootc-image-builder reference) |
 | [006](docs/project/006-production-upgrade-scenarios.md) | Production Upgrade Scenarios |

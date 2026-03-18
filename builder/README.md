@@ -10,7 +10,7 @@ builder/
 ├── gce/config.toml       # GCE (Google Compute Engine) builder customizations
 ├── qcow2/config.toml     # QCOW2 builder customizations
 ├── vmdk/config.toml      # VMDK builder customizations
-├── ova/bootc-poc.ovf     # OVF template for OVA packaging (VMDK → OVA)
+├── ova/bootc-testboot.ovf # OVF template for OVA packaging (VMDK → OVA, EFI firmware)
 └── README.md
 ```
 
@@ -34,9 +34,16 @@ GCE-specific config. Uses `--type raw` with `bootc-image-builder`, then the raw 
 
 Standard `bootc-image-builder` [Blueprint](https://github.com/osbuild/blueprint) configs with `[[customizations.user]]`, `[[customizations.filesystem]]`, and `[customizations.kernel]` sections.
 
-### `ova/bootc-poc.ovf`
+### `ova/bootc-testboot.ovf`
 
-OVF descriptor template with placeholders (`CPU_COUNT`, `MEMORY_MB`, `DISK_SIZE_GB`, `VMDK_FILENAME`, `VMDK_SIZE`). These are filled in by the CI pipeline during OVA packaging.
+OVF descriptor template with placeholders (`CPU_COUNT`, `MEMORY_MB`, `DISK_SIZE_GB`, `VMDK_FILENAME`, `VMDK_SIZE`). These are filled in by the CI pipeline (or manually via `sed`) during OVA packaging.
+
+Key settings:
+
+- **Firmware:** `vmw:firmware="efi"` -- required because `bootc-image-builder` produces EFI-bootable disks. Without this, vSphere defaults to BIOS and the VM will not boot.
+- **SCSI Controller:** `lsilogic` for broad compatibility (ESXi 5.x+, Workstation, VirtualBox). For vSphere 6.5+ production workloads, change `<rasd:ResourceSubType>` to `pvscsi` (paravirtual) for better I/O performance.
+- **Hardware version:** `vmx-14` (vSphere 6.7+). Raise to `vmx-19` for vSphere 7.0+ features or `vmx-21` for vSphere 8.0+.
+- **Network:** VmxNet3 adapter on `VM Network`. Adjust the network name to match your vSphere environment.
 
 ## Usage
 
