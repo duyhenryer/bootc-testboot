@@ -210,30 +210,13 @@ Shows the exact container image reference and digest for the booted deployment.
 
 ## 7. Build Disk Images (CI only)
 
-Disk images (AMI, VMDK, OVA, QCOW2, ISO) are built in CI via `workflow_dispatch`:
+Disk images (AMI, VMDK, OVA, QCOW2, ISO) are built in CI via `workflow_dispatch` on `build-artifacts.yml`:
 
-1. Go to **Actions** > **Build bootc image** > **Run workflow**
+1. Go to **Actions** > **Build disk artifacts** > **Run workflow**
 2. Choose distro, platforms, and set `formats` (e.g. `qcow2,vmdk,ami`)
 3. Artifacts are pushed to GHCR as OCI scratch images
 
-### Pull a disk artifact
-
-```bash
-IMAGE="ghcr.io/duyhenryer/bootc-testboot-centos-stream9-qcow2:latest-amd64"
-ctr=$(podman create $IMAGE /bin/true)
-podman export $ctr | tar -xf - -C ./output/
-podman rm $ctr
-```
-
-### OVA for VMware
-
-When `vmdk` is in `formats`, CI auto-packages the VMDK into an OVA using `builder/ova/bootc-poc.ovf`.
-
-**Import into vSphere:**
-
-1. Pull the OVA artifact from GHCR
-2. vSphere Client > **Hosts and Clusters** > right-click host > **Deploy OVF Template**
-3. Select the `.ova` file, follow wizard, power on
+For extraction, deployment, and verification steps, see [005-manual-deployments.md](005-manual-deployments.md).
 
 ---
 
@@ -248,5 +231,5 @@ When `vmdk` is in `formats`, CI auto-packages the VMDK into an OVA using `builde
 | Temp writable /usr | `sudo bootc usr-overlay` |
 | Check /etc drift | `sudo ostree admin config-diff` |
 | Update bootloader | `sudo bootupctl update` |
-| Create disk images | `workflow_dispatch` on `build-bootc.yml` with `formats=...` |
-| Pull disk artifact | `podman create <oci-image> /bin/true` then `podman export` |
+| Create disk images | `workflow_dispatch` on `build-artifacts.yml` with `formats=...` |
+| Pull disk artifact | See [005-manual-deployments.md](005-manual-deployments.md) |

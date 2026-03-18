@@ -6,6 +6,7 @@ This directory contains configuration files used exclusively by the `bootc-image
 
 ```
 builder/
+├── ami/config.toml       # AWS AMI builder customizations (Nitro NVMe timeout, serial console)
 ├── gce/config.toml       # GCE (Google Compute Engine) builder customizations
 ├── qcow2/config.toml     # QCOW2 builder customizations
 ├── vmdk/config.toml      # VMDK builder customizations
@@ -20,6 +21,10 @@ Configurations are split by output format because different environments often r
 - **Disk Partitioning:** e.g., allocating specific storage sizes for `/var/data`.
 - **User Injection:** e.g., injecting SSH keys for `devops` user.
 - **Kernel Boot Arguments:** e.g., serial console parameters.
+
+### `ami/config.toml`
+
+AWS-specific config. Uses `--type ami` with `bootc-image-builder`. Kernel args include `nvme_core.io_timeout=4294967295` (prevents NVMe timeout on Nitro instances) and `console=ttyS0,115200n8` for EC2 serial console. The raw disk output is uploaded to S3 and imported as an EBS snapshot via `aws ec2 import-snapshot`.
 
 ### `gce/config.toml`
 

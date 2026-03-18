@@ -112,33 +112,19 @@ The workflow (`.github/workflows/build-bootc.yml`) builds the image with `podman
 
 ## 6. Create Disk Images (CI only)
 
-Disk images (AMI, VMDK, OVA, QCOW2, ISO) are built in CI, not locally. Use `workflow_dispatch` on `build-bootc.yml`:
+Disk images (AMI, VMDK, OVA, QCOW2, ISO) are built in CI, not locally. Use `workflow_dispatch` on `build-artifacts.yml`:
 
-1. Go to **Actions** > **Build bootc image** > **Run workflow**
+1. Go to **Actions** > **Build disk artifacts** > **Run workflow**
 2. Select distro, platforms, and fill in `formats` (e.g. `qcow2,vmdk,ami`)
 3. The workflow builds disk images and pushes them as OCI scratch artifacts to GHCR
 
-### Pulling a disk artifact
+### Pulling and deploying disk artifacts
 
-```bash
-IMAGE="ghcr.io/duyhenryer/bootc-testboot-centos-stream9-qcow2:latest-amd64"
+For step-by-step extraction and deployment instructions (AWS, GCP, VMware, bare metal), see [005-manual-deployments.md](005-manual-deployments.md). That document covers:
 
-# Create a dummy container and export its filesystem
-ctr=$(podman create $IMAGE /bin/true)
-podman export $ctr | tar -xf - -C ./output/
-podman rm $ctr
-```
-
-### OVA for VMware
-
-When `vmdk` is included in `formats`, the CI pipeline automatically packages the VMDK into an OVA (with OVF descriptor from `builder/ova/bootc-poc.ovf`) and pushes it as a separate OCI artifact.
-
-**Import into vSphere:**
-
-1. Pull the OVA artifact from GHCR (see above)
-2. In vSphere Client: **Hosts and Clusters** > right-click host > **Deploy OVF Template**
-3. Select the `.ova` file
-4. Follow the wizard and power on the VM
+- How to extract disk files from OCI artifacts (`podman create` + `podman cp`)
+- Artifact path reference table for all formats (AMI, QCOW2, VMDK, OVA, ISO)
+- Complete deployment walkthroughs for AWS EC2 and GCP
 
 ---
 
@@ -148,7 +134,7 @@ This POC does not include Terraform. Launch manually:
 
 **AWS Console:**
 1. EC2 → Launch instance
-2. Select **My AMIs** → choose `bootc-poc-dev`
+2. Select **My AMIs** → choose `bootc-testboot-dev`
 3. Instance type: t3.small or larger
 4. Configure security group (SSH 22, HTTP 80, 8080 for hello)
 5. Attach IAM instance profile with **SSM** permissions (for Session Manager)
@@ -297,7 +283,7 @@ Push to `main` to trigger CI build. Use `workflow_dispatch` for disk artifacts. 
 | Build | `make build` |
 | Lint | `make lint` |
 | Push (CI only) | Auto via GitHub Actions on merge to `main` |
-| Create disk images | `workflow_dispatch` on `build-bootc.yml` with `formats=...` |
+| Create disk images | `workflow_dispatch` on `build-artifacts.yml` with `formats=...` |
 | Upgrade | `sudo bootc upgrade && sudo systemctl reboot` |
 | Rollback | `sudo bootc rollback && sudo systemctl reboot` |
 | Status | `sudo bootc status` |

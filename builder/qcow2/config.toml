@@ -1,10 +1,11 @@
-# bootc-image-builder customizations for QCOW2
+# bootc-image-builder customizations for AWS AMI
 # Docs: https://github.com/osbuild/bootc-image-builder#-build-config
 #
-# Partition guidance for production:
+# AWS-specific notes:
+#   - nvme_core.io_timeout: prevents NVMe timeout on Nitro instances during heavy I/O
+#   - console=ttyS0: enables EC2 serial console (Instance Connect / Get System Log)
 #   - Separate /var/lib/mongodb for database-heavy workloads (50+ GiB)
-#   - Separate /var/log to prevent log flooding from filling root
-#   - Adjust sizes based on customer requirements
+#   - Adjust sizes based on instance storage / EBS volume size
 
 [[customizations.user]]
 name = "devops"
@@ -30,4 +31,4 @@ minsize = "5 GiB"
 # minsize = "10 GiB"
 
 [customizations.kernel]
-append = "console=tty0 console=ttyS0,115200n8"
+append = "console=tty0 console=ttyS0,115200n8 nvme_core.io_timeout=4294967295"

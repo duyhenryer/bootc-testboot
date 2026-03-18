@@ -239,10 +239,10 @@ How we use bootc to build, test, and deliver our product.
 |-----|-------|
 | [001](docs/project/001-architecture-overview.md) | Architecture Overview |
 | [002](docs/project/002-building-bootc-images.md) | Building Our Images |
-| [003](docs/project/003-bootc-image-builder.md) | Disk Image Builder |
-| [004](docs/project/004-poc-walkthrough.md) | POC Walkthrough |
-| [005](docs/project/005-runbook.md) | Operations Runbook |
-| [006](docs/project/006-manual-deployments.md) | Manual VM Deployments |
-| [007](docs/project/007-production-upgrade-scenarios.md) | Production Upgrade Scenarios |
-| [008](docs/project/008-local-testing-guide.md) | Local Testing Guide |
-| [009](docs/project/009-test-case-registry.md) | Test Case Registry |
+| [003](docs/project/003-poc-walkthrough.md) | POC Walkthrough |
+| [004](docs/project/004-runbook.md) | Operations Runbook |
+| [005](docs/project/005-manual-deployments.md) | Manual VM Deployments (includes bootc-image-builder reference) |
+| [006](docs/project/006-production-upgrade-scenarios.md) | Production Upgrade Scenarios |
+| [007](docs/project/007-local-testing-guide.md) | Local Testing Guide |
+| [008](docs/project/008-test-case-registry.md) | Test Case Registry |
+| [009](docs/project/009-rootfs-overlay-guide.md) | Rootfs Overlay Guide (build-time to runtime mapping) |

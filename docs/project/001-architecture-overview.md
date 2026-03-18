@@ -109,6 +109,50 @@ make apps                          make build
                                               └─ bootc-image-builder --type vmdk → VMDK → OVA → vSphere
 ```
 
+### Rootfs Overlay Mapping
+
+Every component under `bootc/` follows the same pattern: files inside `rootfs/` mirror the target filesystem. `COPY bootc/libs/*/rootfs/ /` strips the `bootc/libs/common/rootfs` prefix and copies everything into `/`.
+
+```mermaid
+flowchart LR
+    subgraph repo ["Source (repo)"]
+        libs["bootc/libs/common/rootfs/"]
+        svcs["bootc/services/*/rootfs/"]
+        apps["bootc/apps/*/rootfs/"]
+    end
+
+    subgraph image ["Image / VM (runtime)"]
+        libexec["/usr/libexec/testboot/*.sh"]
+        share["/usr/share/mongodb/ redis/ nginx/"]
+        systemd["/usr/lib/systemd/system/"]
+        tmpfiles["/usr/lib/tmpfiles.d/"]
+        sysusers["/usr/lib/sysusers.d/"]
+        yumrepo["/etc/yum.repos.d/"]
+        etclink["/etc/*.conf symlinks"]
+    end
+
+    libs -->|"COPY / "| libexec
+    libs -->|"COPY / "| tmpfiles
+    libs -->|"COPY / "| sysusers
+    svcs -->|"COPY / "| share
+    svcs -->|"COPY / "| systemd
+    svcs -->|"COPY / "| tmpfiles
+    svcs -->|"COPY / "| sysusers
+    svcs -->|"COPY / "| yumrepo
+    apps -->|"COPY / "| systemd
+    apps -->|"COPY / "| tmpfiles
+    share -.->|"ln -sf"| etclink
+```
+
+| Source Layer | What It Provides | Runtime Location |
+|-------------|------------------|-----------------|
+| `bootc/libs/common/` | Shared scripts (`log.sh`, `gen-password.sh`, ...) | `/usr/libexec/testboot/` |
+| `bootc/services/<name>/` | Immutable configs, systemd overrides, tmpfiles, sysusers, yum repos | `/usr/share/<name>/`, `/usr/lib/systemd/`, `/usr/lib/tmpfiles.d/` |
+| `bootc/apps/<name>/` | systemd units, nginx vhosts, tmpfiles | `/usr/lib/systemd/system/`, `/usr/share/nginx/conf.d/` |
+| `output/bin/` (separate COPY) | Compiled app binaries | `/usr/bin/` |
+
+Configs in `/usr/share/` are symlinked from `/etc/` at build time (`ln -sf`), making them read-only at runtime while services still find them at the expected `/etc/` path. For the full mapping of every file, see [009-rootfs-overlay-guide.md](009-rootfs-overlay-guide.md).
+
 ---
 
 ## Filesystem Model
