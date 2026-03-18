@@ -245,3 +245,4 @@ How we use bootc to build, test, and deliver our product.
 | [006](docs/project/006-production-upgrade-scenarios.md) | Production Upgrade Scenarios |
 | [007](docs/project/007-local-testing-guide.md) | Local Testing Guide |
 | [008](docs/project/008-test-case-registry.md) | Test Case Registry |
+| [009](docs/project/009-rootfs-overlay-guide.md) | Rootfs Overlay Guide (build-time to runtime mapping) |
