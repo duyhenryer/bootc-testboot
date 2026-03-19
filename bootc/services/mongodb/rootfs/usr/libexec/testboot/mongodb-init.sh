@@ -21,10 +21,19 @@ fi
 ADMIN_PW=$(cat /var/lib/mongodb/.admin-pw)
 
 mongosh --quiet --tls --tlsAllowInvalidCertificates --eval "
-  if (rs.status().ok !== 1) {
+  let initialized = false;
+  try { initialized = (rs.status().ok === 1); } catch(e) {}
+
+  if (!initialized) {
     rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }] });
-    while (!rs.isMaster().ismaster) { sleep(1000); }
+    let ready = false;
+    for (let i = 0; i < 30; i++) {
+      if (db.hello().isWritablePrimary) { ready = true; break; }
+      sleep(2000);
+    }
+    if (!ready) { throw new Error('rs0 primary election timed out after 60s'); }
   }
+
   const adminDb = db.getSiblingDB('admin');
   if (adminDb.getUser('admin') === null) {
     adminDb.createUser({
