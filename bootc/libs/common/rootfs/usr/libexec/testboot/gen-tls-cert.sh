@@ -11,7 +11,7 @@
 #   <cert-dir>/ca.pem       - CA certificate
 #   <cert-dir>/server.pem   - Server certificate + private key (combined)
 #
-# Idempotent: skips if ca.pem already exists.
+# Idempotent: skips if both ca.pem and server.pem already exist.
 #
 # Example:
 #   gen-tls-cert.sh /var/lib/mongodb/tls localhost
@@ -23,8 +23,8 @@ CERT_DIR="${1:?Usage: gen-tls-cert.sh <cert-dir> [hostname] [days]}"
 HOSTNAME="${2:-localhost}"
 DAYS="${3:-3650}"
 
-if [ -f "$CERT_DIR/ca.pem" ]; then
-    log_info "TLS certs already exist: $CERT_DIR/ca.pem"
+if [ -f "$CERT_DIR/ca.pem" ] && [ -f "$CERT_DIR/server.pem" ]; then
+    log_info "TLS certs already exist: $CERT_DIR"
     exit 0
 fi
 
@@ -58,7 +58,7 @@ openssl x509 -req \
 cat "$TMPDIR/server-cert.pem" "$TMPDIR/server-key.pem" > "$TMPDIR/server.pem"
 
 chmod 0600 "$TMPDIR/ca.pem" "$TMPDIR/server.pem"
-mv "$TMPDIR/ca.pem" "$CERT_DIR/ca.pem"
 mv "$TMPDIR/server.pem" "$CERT_DIR/server.pem"
+mv "$TMPDIR/ca.pem" "$CERT_DIR/ca.pem"
 
 log_info "Generated TLS certs -> $CERT_DIR (CN=$HOSTNAME, valid ${DAYS}d)"
