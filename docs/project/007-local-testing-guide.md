@@ -176,6 +176,7 @@ sudo podman run --rm --privileged \
   quay.io/centos-bootc/bootc-image-builder:latest \
   --type qcow2 \
   --rootfs ext4 \
+  --chown $(id -u):$(id -g) \
   --config /builder/qcow2/config.toml \
   ghcr.io/duyhenryer/bootc-testboot:latest
 ```

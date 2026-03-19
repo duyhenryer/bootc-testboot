@@ -1,10 +1,8 @@
 # bootc-image-builder customizations for VMDK (VMware / vSphere)
 # Docs: https://github.com/osbuild/bootc-image-builder#-build-config
 #
-# Partition guidance for production:
-#   - Separate /var/lib/mongodb for database-heavy workloads (50+ GiB)
-#   - Separate /var/log to prevent log flooding from filling root
-#   - Adjust sizes based on customer requirements
+# On-prem deployments: partitions are baked into the disk image.
+# Adjust sizes based on customer requirements.
 
 [[customizations.user]]
 name = "devops"
@@ -17,17 +15,12 @@ mountpoint = "/"
 minsize = "10 GiB"
 
 [[customizations.filesystem]]
-mountpoint = "/var/data"
-minsize = "5 GiB"
+mountpoint = "/var/lib/mongodb"
+minsize = "50 GiB"
 
-# Production example (uncomment as needed):
-# [[customizations.filesystem]]
-# mountpoint = "/var/lib/mongodb"
-# minsize = "50 GiB"
-#
-# [[customizations.filesystem]]
-# mountpoint = "/var/log"
-# minsize = "10 GiB"
+[[customizations.filesystem]]
+mountpoint = "/var/log"
+minsize = "5 GiB"
 
 [customizations.kernel]
 append = "console=tty0 console=ttyS0,115200n8"
