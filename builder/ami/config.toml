@@ -4,8 +4,9 @@
 # AWS-specific notes:
 #   - nvme_core.io_timeout: prevents NVMe timeout on Nitro instances during heavy I/O
 #   - console=ttyS0: enables EC2 serial console (Instance Connect / Get System Log)
-#   - Separate /var/lib/mongodb for database-heavy workloads (50+ GiB)
-#   - Adjust sizes based on instance storage / EBS volume size
+#   - Cloud best practice: attach EBS volumes for MongoDB data (/var/lib/mongodb)
+#     rather than baking large partitions into the AMI root volume.
+#     EBS can be resized, snapshotted, and backed up independently.
 
 [[customizations.user]]
 name = "devops"
@@ -17,18 +18,11 @@ groups = ["wheel"]
 mountpoint = "/"
 minsize = "10 GiB"
 
-[[customizations.filesystem]]
-mountpoint = "/var/data"
-minsize = "5 GiB"
-
-# Production example (uncomment as needed):
+# Cloud best practice: attach EBS/Persistent Disk for MongoDB data
+# rather than baking it into the root volume.
 # [[customizations.filesystem]]
 # mountpoint = "/var/lib/mongodb"
 # minsize = "50 GiB"
-#
-# [[customizations.filesystem]]
-# mountpoint = "/var/log"
-# minsize = "10 GiB"
 
 [customizations.kernel]
 append = "console=tty0 console=ttyS0,115200n8 nvme_core.io_timeout=4294967295"

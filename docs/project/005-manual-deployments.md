@@ -9,6 +9,35 @@ You have **two options** for every deployment target:
 
 Currently tested end-to-end: **AWS EC2** and **Google Cloud Platform**. VMware and bare metal sections are included for reference but not yet validated.
 
+### Local build prerequisites (Option A)
+
+Option A requires a bootc OCI image built from this repo. If you have not built one yet, do it first. You can use Make **or** podman directly:
+
+**Using Make (recommended):**
+
+```bash
+make base                    # Layer 1: base OS image
+make build                   # Layer 2: app image (Containerfile)
+```
+
+**Using podman directly:**
+
+```bash
+# Layer 1: base image
+podman build -f base/centos/stream9/Containerfile \
+    -t ghcr.io/duyhenryer/bootc-testboot-base:centos-stream9-latest .
+
+# Layer 2: app image
+podman build \
+    --build-arg BASE_DISTRO=centos-stream9 \
+    -t ghcr.io/duyhenryer/bootc-testboot:latest \
+    -f Containerfile .
+```
+
+Change `centos/stream9` to your target distro (`centos/stream10`, `fedora/40`, `fedora/41`). See [Makefile](../../Makefile) for all variables.
+
+After building, verify with `podman images | grep bootc-testboot`. Then proceed to the deployment section for your target (AWS, GCE, VMware).
+
 ---
 
 ## 1. How Artifacts Work
@@ -95,6 +124,25 @@ bootc-image-builder is a **container** that converts bootc OCI images into disk 
 | **osbuild-selinux** | Required on SELinux-enforced systems (e.g. Fedora, RHEL) |
 | **Rootful podman** | On macOS, run `podman machine set --rootful` before starting |
 
+### Supported flags
+
+Reference: [osbuild.org/docs/bootc](https://osbuild.org/docs/bootc/)
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--type` | Image type (can be passed multiple times) | qcow2 |
+| `--rootfs` | Root filesystem type: ext4, xfs, btrfs | from source image |
+| `--config` | Path to config.toml or config.json inside the container | /config.toml |
+| `--chown` | chown output directory to UID:GID | (none) |
+| `--target-arch` | Build for a different architecture (experimental) | host arch |
+| `--output` | Artifact output directory | `.` |
+| `--progress` | Progress bar: verbose, term, debug | auto |
+| `--use-librepo` | Use librepo for RPM downloads (faster) | false |
+| `--log-level` | Logging level: debug, info, error | error |
+| `-v, --verbose` | Verbose output (implies --log-level=info) | false |
+
+> **Note:** There is no `--size` flag. Disk sizing is controlled via `[[customizations.filesystem]]` in config.toml. See [Build config](#build-config-configtoml) below.
+
 ### Image types
 
 | Type | Target |
@@ -137,9 +185,9 @@ groups = ["wheel"]
 
 Fields: `name` (required), `password`, `key`, `groups`.
 
-**Filesystem:**
+**Filesystem (disk sizing and partitions):**
 
-Set minimum sizes for `/`, `/boot`, and extra partitions under `/var`:
+Disk sizing is controlled via `[[customizations.filesystem]]` in config.toml. There is no `--size` CLI flag.
 
 ```toml
 [[customizations.filesystem]]
@@ -193,22 +241,98 @@ The image includes nginx, MongoDB 8.0, Redis, and the hello app. RabbitMQ is inc
 |-------------|-------|
 | **AWS CLI v2** | Installed and configured (`aws configure`) |
 | **IAM permissions** | `s3:PutObject`, `s3:CreateBucket`, `ec2:RunInstances` + Method A: `ec2:ImportImage`, `ec2:DescribeImportImageTasks` + Method B: `ec2:ImportSnapshot`, `ec2:DescribeImportSnapshotTasks`, `ec2:RegisterImage` |
-| **VM Import role** | The `vmimport` service role must exist ([AWS docs](https://docs.aws.amazon.com/vm-import/latest/userguide/required-permissions.html)) |
+| **VM Import role** | The `vmimport` service role must exist -- see setup below |
 | **podman** | Required for Option A (local build) and Option B (pulling from GHCR) |
 
-### Option A: Build locally with bootc-image-builder
+### Setup: vmimport role and S3 policy
 
-This builds the disk image on your machine. You need the bootc OCI image already built (`make build`).
+AWS requires a `vmimport` service role to import disk images. If you already have this role, skip to the policy step.
 
-**Step 1: Copy your image to root podman storage**
+**Create the vmimport role** (one-time, per AWS account):
 
-`bootc-image-builder` runs with `sudo` and uses root's container storage, not your user storage. You must copy the image across:
+```bash
+aws iam create-role --role-name vmimport --assume-role-policy-document '{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "Service": "vmie.amazonaws.com" },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": { "sts:ExternalId": "vmimport" }
+      }
+    }
+  ]
+}'
+```
+
+**Attach S3 access policy** (update the bucket name to match yours):
+
+```bash
+export BUCKET=bootc-testboot   # or your bucket name
+
+aws iam put-role-policy \
+  --role-name vmimport \
+  --policy-name vmimport-s3-access \
+  --policy-document "{
+    \"Version\": \"2012-10-17\",
+    \"Statement\": [
+      {
+        \"Effect\": \"Allow\",
+        \"Action\": [
+          \"s3:GetBucketLocation\",
+          \"s3:GetObject\",
+          \"s3:ListBucket\"
+        ],
+        \"Resource\": [
+          \"arn:aws:s3:::${BUCKET}\",
+          \"arn:aws:s3:::${BUCKET}/*\"
+        ]
+      },
+      {
+        \"Effect\": \"Allow\",
+        \"Action\": [
+          \"ec2:ModifySnapshotAttribute\",
+          \"ec2:CopySnapshot\",
+          \"ec2:RegisterImage\",
+          \"ec2:Describe*\"
+        ],
+        \"Resource\": \"*\"
+      }
+    ]
+  }"
+```
+
+**Verify:**
+
+```bash
+aws iam get-role --role-name vmimport
+aws iam get-role-policy --role-name vmimport --policy-name vmimport-s3-access
+```
+
+Reference: [AWS VM Import Service Role](https://docs.aws.amazon.com/vm-import/latest/userguide/required-permissions.html)
+
+### Option A: Build locally (A to Z)
+
+This builds everything on your machine -- from Containerfile to deployable disk image.
+
+**Step 1: Build the bootc OCI image**
+
+If you have not built the image yet, follow [Local build prerequisites](#local-build-prerequisites-option-a) at the top of this document. Verify the image exists:
+
+```bash
+podman images | grep bootc-testboot
+```
+
+**Step 2: Copy to root podman storage**
+
+`bootc-image-builder` runs with `sudo` and uses root's container storage, not your user storage. Copy the image across:
 
 ```bash
 podman save ghcr.io/duyhenryer/bootc-testboot:latest | sudo podman load
 ```
 
-**Step 2: Build the raw disk**
+**Step 3: Build the raw disk**
 
 Run from the **repository root**. Use `$(pwd)` so paths resolve correctly with `sudo`:
 
@@ -221,12 +345,17 @@ sudo podman run --rm --privileged \
     -v "$(pwd)/output/ami":/output \
     quay.io/centos-bootc/bootc-image-builder:latest \
     --type ami --rootfs ext4 \
+    --chown $(id -u):$(id -g) \
     --config /config/config.toml \
     ghcr.io/duyhenryer/bootc-testboot:latest
 ```
 
 Output: `output/ami/image/disk.raw`
 
+> Disk size is controlled by `[[customizations.filesystem]]` in `builder/ami/config.toml`. For AWS, keep the root volume small and attach EBS volumes for data (e.g. `/var/lib/mongodb`).
+>
+> **`--chown`** makes output files owned by your user instead of root.
+>
 > **Gotcha:** `builder/ami/config.toml` must be a **regular file**, not a symlink. If it's a symlink, the container can't follow it (the symlink target is outside the mounted volume). The config includes AWS-tuned kernel args: `nvme_core.io_timeout=4294967295` for Nitro NVMe and `console=ttyS0` for EC2 serial console.
 
 ### Option B: Pull from GHCR
@@ -245,87 +374,58 @@ podman rm "$ctr"
 
 AWS offers two ways to turn a disk image in S3 into a launchable AMI:
 
-| | import-image (recommended) | import-snapshot (advanced) |
+| | import-snapshot (recommended for bootc) | import-image (standard Linux only) |
 |---|---|---|
-| **Result** | AMI created directly | EBS snapshot (must manually register as AMI) |
-| **AWS commands** | 4: `s3 cp` → `import-image` → `describe-import-image-tasks` → `run-instances` | 6: `s3 cp` → `import-snapshot` → `describe-import-snapshot-tasks` → `register-image` → `run-instances` |
-| **Disk formats** | raw, VMDK, VHD, VHDX, OVA | raw, VMDK, VHD, VHDX |
-| **When to use** | Default choice for most users | Need fine control over AMI flags (boot-mode, device mapping, etc.) |
+| **Result** | EBS snapshot → register as AMI | AMI created directly |
+| **AWS commands** | 6: `s3 cp` → `import-snapshot` → `describe-import-snapshot-tasks` → `register-image` → `run-instances` | 4: `s3 cp` → `import-image` → `describe-import-image-tasks` → `run-instances` |
+| **Disk formats** | raw, VMDK, VHD, VHDX | raw, VMDK, VHD, VHDX, OVA |
+| **OS detection** | None -- you specify architecture and boot mode manually | Yes -- AWS scans the disk to detect the OS |
+| **When to use** | **bootc/ostree images (required).** Also useful when you need fine control over AMI flags | Standard Linux VMs (Fedora, RHEL, Ubuntu) with conventional filesystem. **Does NOT work with bootc/ostree images.** |
 
-> **Note:** Both methods accept **raw** and **VMDK** (our CI builds both). `import-image` also supports **OVA**; `import-snapshot` does not. For this project you can use either raw (e.g. from `--type ami`) or VMDK (from `--type vmdk`) with either method.
+> **Why does import-image fail with bootc?**
+>
+> The disk image IS bootable -- `bootc-image-builder --type ami` produces a proper GPT partition table, EFI System Partition with GRUB, and kernel + initramfs. The EC2 instance boots fine once the AMI exists.
+>
+> The problem is AWS's **OS detection during import**:
+>
+> 1. `import-image` mounts the root filesystem and scans for OS markers (`/etc/os-release`, standard directory layout, bootloader config)
+> 2. bootc/ostree images mount the real root at `/sysroot`, then bind-mount a specific deployment to `/` -- there is no traditional `/boot` with GRUB config in the expected location
+> 3. AWS scanner sees the ostree layout and reports: `CLIENT_ERROR: Unknown OS / Missing OS files`
+>
+> `import-snapshot` bypasses this entirely. It imports the raw disk as an EBS snapshot without any OS detection. You then register the AMI yourself via `register-image`, specifying `--boot-mode uefi` -- and the VM boots normally because the disk IS properly bootable.
 
 Reference: [AWS VM Import/Export comparison](https://docs.aws.amazon.com/vm-import/latest/userguide/vmimport-differences.html)
 
-#### Method A: import-image (recommended)
+#### Method A: import-snapshot (recommended for bootc)
 
-This is the simplest path. One command creates the AMI directly -- no `register-image` needed.
+This is the recommended method for bootc images. It bypasses AWS OS detection (which fails on ostree-based filesystems) and gives you full control over AMI registration flags (`--boot-mode`, `--architecture`, etc.).
 
 ```bash
 # Step 1: Set your region and create an S3 bucket
 export AWS_REGION=ap-southeast-1
-export BUCKET=bootc-testboot-$(date +%Y%m%d)
-aws s3 mb "s3://${BUCKET}" --region "$AWS_REGION"
+export BUCKET=bootc-testboot
+aws s3 mb "s3://${BUCKET}" --region "$AWS_REGION"   # skip if bucket already exists
 
 # Step 2: Upload the raw disk to S3
-# If you used Option A, the file is at output/ami/image/disk.raw
-# If you used Option B, the file is at ./disk.raw
+# If you used Option A (local build), the file is at output/ami/image/disk.raw
+# If you used Option B (pull from GHCR), the file is at ./disk.raw
 aws s3 cp output/ami/image/disk.raw "s3://${BUCKET}/bootc-testboot.raw"
 
-# Step 3: Import directly as AMI
-aws ec2 import-image \
-    --region "$AWS_REGION" \
-    --description "bootc-testboot CentOS Stream 9" \
-    --license-type BYOL \
-    --disk-containers "[{\"Format\":\"raw\",\"UserBucket\":{\"S3Bucket\":\"${BUCKET}\",\"S3Key\":\"bootc-testboot.raw\"}}]"
-# Output contains ImportTaskId, e.g. "import-ami-0123456789abcdef0"
-# Save it -- you need it for the next step.
-
-# Step 4: Wait for the import to finish
-# Re-run this command until Status shows "completed":
-aws ec2 describe-import-image-tasks \
-    --region "$AWS_REGION" \
-    --import-task-ids import-ami-XXXXX
-# When done, the output contains ImageId (e.g. "ami-0123456789abcdef0")
-# The AMI is ready to launch -- no register-image needed.
-
-# Step 5: Launch an EC2 instance
-aws ec2 run-instances \
-    --region "$AWS_REGION" \
-    --image-id ami-XXXXX \
-    --instance-type t3.medium \
-    --key-name YOUR_KEY_PAIR \
-    --security-group-ids sg-XXXXX \
-    --subnet-id subnet-XXXXX \
-    --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=bootc-testboot}]'
-```
-
-Replace `XXXXX` placeholders with the actual IDs from the output of each previous step.
-
-> **VMDK format also works.** If you built with `--type vmdk` instead of `--type ami`, change `"Format":"raw"` to `"Format":"vmdk"` and the S3 key accordingly. `import-image` handles the conversion.
-
-**For aarch64 (arm64) builds:** use a Graviton instance type (e.g. `t4g.medium`). `import-image` detects the architecture automatically. RabbitMQ is not available on arm64.
-
-#### Method B: import-snapshot (advanced)
-
-Use this if you need precise control over AMI registration flags (e.g. custom `--boot-mode`, `--block-device-mappings`, or specific `--architecture` overrides).
-
-```bash
-# Steps 1-2 are the same as Method A (create bucket, upload raw disk)
-
-# Step 3: Import as EBS snapshot
+# Step 3: Import as EBS snapshot (bypasses OS detection)
 aws ec2 import-snapshot \
     --region "$AWS_REGION" \
     --description "bootc-testboot CentOS Stream 9" \
     --disk-container "Format=raw,UserBucket={S3Bucket=${BUCKET},S3Key=bootc-testboot.raw}"
 # Output contains ImportTaskId, e.g. "import-snap-0123456789abcdef0"
 
-# Step 4: Wait for the import to finish
+# Step 4: Wait for the import to finish (5-15 minutes)
+# Re-run this command until Status shows "completed":
 aws ec2 describe-import-snapshot-tasks \
     --region "$AWS_REGION" \
     --import-task-ids import-snap-XXXXX
-# When done, note the SnapshotId (e.g. "snap-0123456789abcdef0")
+# When done, note the SnapshotId from SnapshotTaskDetail (e.g. "snap-0123456789abcdef0")
 
-# Step 5: Register the snapshot as an AMI (manual -- you control every flag)
+# Step 5: Register the snapshot as an AMI
 aws ec2 register-image \
     --region "$AWS_REGION" \
     --name "bootc-testboot-centos9-$(date +%Y%m%d)" \
@@ -336,9 +436,9 @@ aws ec2 register-image \
     --ena-support \
     --boot-mode uefi \
     --block-device-mappings "DeviceName=/dev/xvda,Ebs={SnapshotId=snap-XXXXX,VolumeType=gp3}"
-# Output contains ImageId, e.g. "ami-0123456789abcdef0"
+# Output contains ImageId (e.g. "ami-0123456789abcdef0")
 
-# Step 6: Launch (same as Method A Step 5)
+# Step 6: Launch an EC2 instance
 aws ec2 run-instances \
     --region "$AWS_REGION" \
     --image-id ami-XXXXX \
@@ -346,12 +446,76 @@ aws ec2 run-instances \
     --key-name YOUR_KEY_PAIR \
     --security-group-ids sg-XXXXX \
     --subnet-id subnet-XXXXX \
+    --iam-instance-profile Arn=arn:aws:iam::ACCOUNT_ID:instance-profile/AmazonSSMManagedInstanceCore \
+    --block-device-mappings "DeviceName=/dev/xvda,Ebs={VolumeSize=20,VolumeType=gp3}" \
     --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=bootc-testboot}]'
 ```
 
-**For aarch64 (arm64) builds:** use `--architecture arm64` in `register-image` and a Graviton instance type (e.g. `t4g.medium`).
+Replace `XXXXX` placeholders with the actual IDs from the output of each previous step.
 
-### SSH in and verify
+| Flag | Why |
+|------|-----|
+| `--key-name` | SSH key pair for direct SSH access |
+| `--iam-instance-profile` | Attach SSM role so you can connect via AWS Systems Manager Session Manager (no public IP needed). Remove if not using SSM. |
+| `--block-device-mappings VolumeSize=20` | Override root EBS volume to 20 GiB. The AMI's snapshot is ~12 GiB; this gives headroom for MongoDB data, logs, etc. Adjust as needed. |
+
+> **VMDK format also works.** If you built with `--type vmdk` instead of `--type ami`, change `"Format":"raw"` to `"Format":"vmdk"` and the S3 key accordingly.
+
+**For aarch64 (arm64) builds:** use `--architecture arm64` in `register-image` and a Graviton instance type (e.g. `t4g.medium`). RabbitMQ is not available on arm64.
+
+#### Method B: import-image (standard Linux only)
+
+> **Warning:** `import-image` does **NOT work** with bootc/ostree images. It will fail with `CLIENT_ERROR: Unknown OS / Missing OS files`. Use **Method A: import-snapshot** above instead. This method is documented for reference only -- it works for traditional Linux VMs with conventional filesystem layout.
+
+This is the simpler path for standard Linux images. One command creates the AMI directly -- no `register-image` needed.
+
+```bash
+# Step 1: Set your region and create an S3 bucket
+export AWS_REGION=ap-southeast-1
+export BUCKET=bootc-testboot-$(date +%Y%m%d)
+aws s3 mb "s3://${BUCKET}" --region "$AWS_REGION"
+
+# Step 2: Upload the raw disk to S3
+aws s3 cp output/ami/image/disk.raw "s3://${BUCKET}/bootc-testboot.raw"
+
+# Step 3: Import directly as AMI
+aws ec2 import-image \
+    --region "$AWS_REGION" \
+    --description "bootc-testboot CentOS Stream 9" \
+    --license-type BYOL \
+    --disk-containers "[{\"Format\":\"raw\",\"UserBucket\":{\"S3Bucket\":\"${BUCKET}\",\"S3Key\":\"bootc-testboot.raw\"}}]"
+# Output contains ImportTaskId, e.g. "import-ami-0123456789abcdef0"
+
+# Step 4: Wait for the import to finish
+aws ec2 describe-import-image-tasks \
+    --region "$AWS_REGION" \
+    --import-task-ids import-ami-XXXXX
+# When done, the output contains ImageId (e.g. "ami-0123456789abcdef0")
+
+# Step 5: Launch an EC2 instance
+aws ec2 run-instances \
+    --region "$AWS_REGION" \
+    --image-id ami-XXXXX \
+    --instance-type t3.medium \
+    --key-name YOUR_KEY_PAIR \
+    --security-group-ids sg-XXXXX \
+    --subnet-id subnet-XXXXX \
+    --iam-instance-profile Arn=arn:aws:iam::ACCOUNT_ID:instance-profile/AmazonSSMManagedInstanceCore \
+    --block-device-mappings "DeviceName=/dev/xvda,Ebs={VolumeSize=20,VolumeType=gp3}" \
+    --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=bootc-testboot}]'
+```
+
+**For aarch64 (arm64) builds:** use a Graviton instance type (e.g. `t4g.medium`). `import-image` detects the architecture automatically.
+
+### Connect and verify
+
+**Via SSM** (private subnet, no public IP needed):
+
+```bash
+aws ssm start-session --target i-XXXXX --region "$AWS_REGION"
+```
+
+**Via SSH** (public subnet with public IP):
 
 ```bash
 ssh -i ~/.ssh/YOUR_KEY.pem devops@EC2_PUBLIC_IP
@@ -429,15 +593,19 @@ GCP requires a `.tar.gz` containing exactly one file named `disk.raw`. The flow:
 | **IAM permissions** | `roles/compute.imageAdmin` + `roles/storage.objectAdmin` |
 | **podman** | Required for building and extracting |
 
-### Option A: Build locally with bootc-image-builder
+### Option A: Build locally (A to Z)
 
-**Step 1: Copy your image to root podman storage**
+**Step 1: Build the bootc OCI image**
+
+If you have not built the image yet, follow [Local build prerequisites](#local-build-prerequisites-option-a) at the top of this document.
+
+**Step 2: Copy to root podman storage**
 
 ```bash
 podman save ghcr.io/duyhenryer/bootc-testboot:latest | sudo podman load
 ```
 
-**Step 2: Build the raw disk and package for GCE**
+**Step 3: Build the raw disk and package for GCE**
 
 ```bash
 mkdir -p output/gce
@@ -448,6 +616,7 @@ sudo podman run --rm --privileged \
     -v "$(pwd)/output/gce":/output \
     quay.io/centos-bootc/bootc-image-builder:latest \
     --type raw --rootfs ext4 \
+    --chown $(id -u):$(id -g) \
     --config /config/config.toml \
     ghcr.io/duyhenryer/bootc-testboot:latest
 
@@ -515,30 +684,270 @@ Issues discovered during GCE deployment:
 
 ## 5. Deploying to VMware (VMDK / OVA)
 
-**Status: Not yet tested end-to-end.** The CI builds VMDK and OVA artifacts, but manual deployment to vSphere has not been validated.
+**Status: Tested in CI (build + package). vSphere import tested via govc and vSphere UI.**
+
+The flow: bootc OCI image → VMDK disk → OVA package (OVF + VMDK + manifest) → vSphere / Workstation / VirtualBox.
+
+`bootc-image-builder` does **not** have a `--type ova`. It builds a VMDK, and a second step packages that VMDK into an OVA archive. The CI pipeline does this automatically; the steps below show how to do it locally.
+
+### What is an OVA?
+
+An OVA is a tar archive containing three files:
+
+| File | Purpose |
+|------|---------|
+| `*.ovf` | XML descriptor: VM name, CPU, RAM, disk size, SCSI controller, network, firmware (EFI) |
+| `*.vmdk` | The actual disk image (streamOptimized format for network transfer) |
+| `*.mf` | SHA256 checksums of the OVF and VMDK files |
+
+The OVF template lives at [`builder/ova/bootc-testboot.ovf`](../../builder/ova/bootc-testboot.ovf). It uses placeholders (`CPU_COUNT`, `MEMORY_MB`, `DISK_SIZE_GB`, `VMDK_FILENAME`, `VMDK_SIZE`) that are filled in during packaging. See [`builder/README.md`](../../builder/README.md) for details on the OVF settings (EFI firmware, SCSI controller, hardware version).
+
+### OVA build flow
+
+```mermaid
+flowchart TD
+    CF["Containerfile\nOS + packages + services"]
+    OCI["OCI Image\npodman build / push"]
+    CFG["config.toml / config.json\nusers, kernel args, filesystem"]
+    BIB["bootc-image-builder\n--type vmdk + config"]
+    VMDK["output/vmdk/disk.vmdk\nstreamOptimized VMDK"]
+    OVA["OVA Package\novf + vmdk + manifest.mf"]
+    TOOL["sed + sha256sum + tar\n(or govc / ovftool)"]
+    VS["vSphere / ESXi"]
+    VB["VirtualBox"]
+    WS["VMware Workstation"]
+    UPG["bootc upgrade\nPull new OCI, reboot"]
+
+    CF --> OCI
+    OCI --> BIB
+    CFG -.->|injected| BIB
+    BIB --> VMDK
+    VMDK --> TOOL
+    TOOL --> OVA
+    OVA --> VS
+    OVA --> VB
+    OVA --> WS
+    OCI --> UPG
+    UPG -.->|"no rebuild needed"| VS
+
+    subgraph buildPhase [Build Phase]
+        CF
+        OCI
+    end
+    subgraph imagePhase [Image Phase]
+        CFG
+        BIB
+        VMDK
+    end
+    subgraph packagePhase [Package Phase]
+        TOOL
+        OVA
+    end
+    subgraph deployPhase [Deploy Phase]
+        VS
+        VB
+        WS
+    end
+```
+
+### Prerequisites
+
+| Requirement | Notes |
+|-------------|-------|
+| **podman** | Required for building and extracting |
+| **vSphere access** | vCenter or ESXi host (for production deployment) |
+| **govc** (optional) | Open-source Go CLI for vSphere. Install: `go install github.com/vmware/govmomi/govc@latest` or download from [GitHub releases](https://github.com/vmware/govmomi/releases) |
+| **ovftool** (optional) | VMware proprietary CLI. Download from [VMware Developer](https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest) |
+
+### Option A: Build locally (A to Z)
+
+**Step 1: Build the bootc OCI image**
+
+If you have not built the image yet, follow [Local build prerequisites](#local-build-prerequisites-option-a) at the top of this document.
+
+**Step 2: Copy to root podman storage**
+
+```bash
+podman save ghcr.io/duyhenryer/bootc-testboot:latest | sudo podman load
+```
+
+**Step 3: Build the VMDK**
+
+Run from the **repository root**. Use `$(pwd)` so paths resolve correctly with `sudo`:
+
+```bash
+mkdir -p output/vmdk
+sudo podman run --rm --privileged \
+    --security-opt label=type:unconfined_t \
+    -v /var/lib/containers/storage:/var/lib/containers/storage \
+    -v "$(pwd)/builder/vmdk":/config:ro \
+    -v "$(pwd)/output/vmdk":/output \
+    quay.io/centos-bootc/bootc-image-builder:latest \
+    --type vmdk --rootfs ext4 \
+    --chown $(id -u):$(id -g) \
+    --config /config/config.toml \
+    ghcr.io/duyhenryer/bootc-testboot:latest
+```
+
+Output: `output/vmdk/vmdk/disk.vmdk`
+
+**Step 4: Package the VMDK into an OVA**
+
+This is the same process the CI uses. You need the OVF template from this repo and standard Linux tools (`sed`, `sha256sum`, `tar`):
+
+```bash
+# Configurable VM specs (adjust as needed)
+CPU_COUNT=2
+MEMORY_MB=4096
+DISK_SIZE_GB=20
+OVA_NAME="bootc-testboot"
+
+# Locate the VMDK
+VMDK_FILE=$(find output/vmdk -name '*.vmdk' | head -1)
+VMDK_BASENAME=$(basename "$VMDK_FILE")
+VMDK_SIZE=$(stat -c%s "$VMDK_FILE")
+
+# Fill the OVF template placeholders
+mkdir -p output/ova
+sed -e "s/VMDK_FILENAME/${VMDK_BASENAME}/" \
+    -e "s/VMDK_SIZE/${VMDK_SIZE}/" \
+    -e "s/DISK_SIZE_GB/${DISK_SIZE_GB}/" \
+    -e "s/CPU_COUNT/${CPU_COUNT}/g" \
+    -e "s/MEMORY_MB/${MEMORY_MB}/g" \
+    builder/ova/bootc-testboot.ovf > output/ova/${OVA_NAME}.ovf
+
+# Copy the VMDK alongside the OVF
+cp "$VMDK_FILE" output/ova/${VMDK_BASENAME}
+
+# Create OVF-compliant manifest (SHA256)
+cd output/ova
+for f in ${OVA_NAME}.ovf ${VMDK_BASENAME}; do
+  echo "SHA256($f)= $(sha256sum "$f" | awk '{print $1}')"
+done > ${OVA_NAME}.mf
+
+# Package into OVA (tar archive, no compression -- OVA spec requires plain tar)
+tar cf ${OVA_NAME}.ova ${OVA_NAME}.ovf ${VMDK_BASENAME} ${OVA_NAME}.mf
+echo "OVA created: ${OVA_NAME}.ova ($(du -h ${OVA_NAME}.ova | cut -f1))"
+```
+
+Output: `output/ova/bootc-testboot.ova`
 
 ### Option B: Pull from GHCR
 
+If CI has already built the artifacts, pull and extract:
+
 ```bash
-# VMDK
+# Option 1: Pull the ready-made OVA
+mkdir -p output/ova
+podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-ova:latest-amd64
+ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-ova:latest-amd64 /bin/true)
+podman export "$ctr" | tar -xf - -C ./output/ova/
+podman rm "$ctr"
+# The .ova file is inside output/ova/
+
+# Option 2: Pull just the VMDK (if you want to customize the OVF or skip OVA)
 podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-vmdk:latest-amd64
 ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-vmdk:latest-amd64 /bin/true)
 podman cp "$ctr":/vmdk/disk.vmdk ./disk.vmdk
 podman rm "$ctr"
-
-# OVA (ready-to-import archive with OVF + VMDK + manifest)
-podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-ova:latest-amd64
-ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-ova:latest-amd64 /bin/true)
-podman export "$ctr" | tar -xf - -C ./output-ova/
-podman rm "$ctr"
 ```
 
-### Import into vSphere
+### Deploy to vSphere
 
-1. In vSphere Client: **Hosts and Clusters** > right-click host > **Deploy OVF Template**
-2. Select the `.ova` file
-3. Follow the wizard (accept defaults or customize CPU/RAM)
-4. Power on the VM
+Three methods are available. Use whichever fits your environment.
+
+#### Method 1: vSphere Web Client (UI)
+
+1. Log in to vSphere Client (https://your-vcenter/ui)
+2. Navigate to **Hosts and Clusters**
+3. Right-click the target host or cluster > **Deploy OVF Template**
+4. **Select an OVF template**: choose "Local file" and browse to the `.ova` file
+5. **Select a name and folder**: enter a VM name (e.g. `bootc-testboot`)
+6. **Select a compute resource**: pick the target host or resource pool
+7. **Review details**: verify vCPU, RAM, disk size from the OVF
+8. **Select storage**: choose a datastore; thin provisioning is recommended
+9. **Select networks**: map "VM Network" to your port group
+10. **Ready to complete**: review and click **Finish**
+11. Wait for the deployment task to complete, then right-click the VM > **Power On**
+
+#### Method 2: govc (open-source CLI)
+
+```bash
+# Set vSphere connection (add to ~/.bashrc or use env-file)
+export GOVC_URL=https://vcenter.example.com/sdk
+export GOVC_USERNAME=administrator@vsphere.local
+export GOVC_PASSWORD='your-password'
+export GOVC_INSECURE=true    # skip TLS verify for self-signed certs
+export GOVC_DATASTORE=datastore1
+export GOVC_NETWORK="VM Network"
+export GOVC_RESOURCE_POOL=/datacenter/host/cluster/Resources
+
+# Import the OVA
+govc import.ova -name=bootc-testboot output/ova/bootc-testboot.ova
+
+# Power on
+govc vm.power -on bootc-testboot
+
+# Get the VM IP (wait a few seconds for DHCP)
+govc vm.ip bootc-testboot
+```
+
+To customize CPU/RAM at import time:
+
+```bash
+govc import.ova \
+    -name=bootc-testboot \
+    -options=<(echo '{"DiskProvisioning":"thin","NetworkMapping":[{"Name":"VM Network","Network":"your-portgroup"}]}') \
+    output/ova/bootc-testboot.ova
+
+govc vm.change -vm bootc-testboot -c 4 -m 8192
+govc vm.power -on bootc-testboot
+```
+
+#### Method 3: ovftool (VMware proprietary)
+
+```bash
+# Deploy to vSphere
+ovftool \
+    --name=bootc-testboot \
+    --net:"VM Network"="your-portgroup" \
+    --datastore=datastore1 \
+    --diskMode=thin \
+    --powerOn \
+    output/ova/bootc-testboot.ova \
+    'vi://administrator@vsphere.local:password@vcenter.example.com/datacenter/host/cluster'
+
+# Deploy to VMware Workstation (local)
+ovftool output/ova/bootc-testboot.ova ~/vmware/bootc-testboot/bootc-testboot.vmx
+```
+
+### SSH in and verify
+
+```bash
+ssh -i ~/.ssh/YOUR_KEY.pem devops@VM_IP_ADDRESS
+
+systemctl status hello nginx mongod redis
+curl -sf http://127.0.0.1:8080/health
+```
+
+> **Tip:** If the VM has no IP, check that the network adapter is connected and the port group has DHCP. Use `govc vm.ip -wait 60s bootc-testboot` to wait for the IP.
+
+### Recommendation: open-vm-tools
+
+For production VMware deployments, consider adding `open-vm-tools` and `cloud-init` to your Containerfile. These provide guest OS heartbeat reporting, graceful shutdown from vSphere, and VM customization (hostname, network) at first boot.
+
+This project does **not** include them by default (they are unnecessary for AWS/GCE/bare metal). If your target is exclusively VMware, add them in a derived layer:
+
+```dockerfile
+FROM ghcr.io/duyhenryer/bootc-testboot:latest
+
+RUN dnf -y install open-vm-tools cloud-init && \
+    ln -s ../cloud-init.target /usr/lib/systemd/system/default.target.wants/cloud-init.target && \
+    systemctl enable vmtoolsd.service && \
+    dnf clean all && rm -rf /var/cache/{dnf,ldconfig,libdnf5} /var/log/{dnf*,hawkey*} /var/lib/dnf
+```
+
+Then build your VMDK/OVA from this derived image instead of the base.
 
 ---
 
@@ -635,9 +1044,14 @@ Content of `wheel-passwordless-sudo`:
 - [ ] Add vmimport role and S3 permissions for AMI (required for both `import-image` and `import-snapshot`)
 - [ ] Always `podman pull` the target image before running bootc-image-builder
 - [ ] Always pass `--rootfs ext4` to avoid "no default fs set" errors
+- [ ] Set disk sizes via `[[customizations.filesystem]]` in config.toml (there is no `--size` CLI flag)
+- [ ] Use `--chown $(id -u):$(id -g)` for local builds so output files are not owned by root
 - [ ] Do not use `-it` flags -- they break CI/non-interactive builds
 - [ ] For VMDK: mount `./output:/output` for local output
 - [ ] For OVA: CI auto-packages from VMDK when `vmdk` is in `formats` input
+- [ ] For OVA: OVF template declares `vmw:firmware="efi"` -- do not override to BIOS in vSphere
+- [ ] For VMware production: consider adding `open-vm-tools` + `cloud-init` to your Containerfile (see Section 5)
+- [ ] For VMware govc: set `GOVC_URL`, `GOVC_USERNAME`, `GOVC_PASSWORD`, `GOVC_INSECURE`
 - [ ] For GCE: `--type raw` then tar.gz, or `--type gce` for direct tar.gz output
 - [ ] For GCE: IAM `roles/compute.imageAdmin` + `roles/storage.objectAdmin`
 - [ ] Filesystem: only `/`, `/boot`, and `/var/*` subdirs (no `/var` itself, no symlinks)

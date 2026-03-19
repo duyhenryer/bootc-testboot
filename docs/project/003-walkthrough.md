@@ -1,6 +1,6 @@
-# POC Walkthrough: Step-by-Step
+# Walkthrough: Step-by-Step
 
-This document walks through the entire bootc-testboot POC flow from prerequisites to adding a new app.
+This document walks through the entire bootc-testboot flow from prerequisites to adding a new app.
 
 ---
 
@@ -31,28 +31,39 @@ cd bootc-testboot
 ```
 bootc-testboot/
 ├── base/
-│   ├── shared/                # Base OS config overlay (SSH, sysctl, systemd)
-│   └── centos/stream9/Containerfile
+│   ├── rootfs/                   # Base OS config overlay (SSH, sysctl, systemd)
+│   ├── centos/stream9/Containerfile
+│   ├── centos/stream10/Containerfile
+│   ├── fedora/40/Containerfile
+│   └── fedora/41/Containerfile
 ├── bootc/
-│   ├── apps/hello/rootfs/     # App OS config overlay (systemd unit, tmpfiles)
-│   └── services/nginx/rootfs/ # Third-party service config overlay
+│   ├── libs/common/rootfs/       # Shared libraries and scripts
+│   ├── apps/hello/rootfs/        # App config overlay (systemd unit, tmpfiles)
+│   ├── services/nginx/rootfs/    # nginx config overlay
+│   ├── services/mongodb/rootfs/  # MongoDB config overlay
+│   ├── services/redis/rootfs/    # Redis config overlay
+│   └── services/rabbitmq/rootfs/ # RabbitMQ config overlay (x86_64 only)
 ├── repos/
-│   └── hello/                 # Go HTTP hello world
+│   └── hello/                    # Go HTTP hello world
 │       ├── main.go
 │       ├── go.mod
 │       └── main_test.go
-├── output/                    # (gitignored) build artifacts
-│   └── bin/                   # pre-built Go binaries
-├── builder/                   # bootc-image-builder configs (per format)
+├── output/                       # (gitignored) build artifacts
+│   └── bin/                      # pre-built Go binaries
+├── builder/                      # bootc-image-builder configs (per format)
+│   ├── ami/config.toml
+│   ├── gce/config.toml
 │   ├── qcow2/config.toml
 │   ├── vmdk/config.toml
-│   ├── ova/bootc-poc.ovf
+│   ├── ova/bootc-testboot.ovf
 │   └── README.md
 ├── .github/workflows/
-│   ├── build-base.yml         # Base image CI (daily/manual)
-│   └── build-bootc.yml        # App image CI + on-demand disk artifacts
-├── Containerfile              # Layer 2: app image
-└── Makefile                   # Local dev targets (apps/test/build/lint/clean)
+│   ├── build-base.yml            # Base image CI (weekly/manual)
+│   ├── build-bootc.yml           # App image CI (push to main)
+│   ├── build-artifacts.yml       # Disk artifact generation (manual dispatch)
+│   └── ci.yml                    # PR checks (build, lint, test)
+├── Containerfile                 # Layer 2: app image
+└── Makefile                      # Local dev targets (apps/test/build/lint/clean)
 ```
 
 ---
@@ -130,7 +141,7 @@ For step-by-step extraction and deployment instructions (AWS, GCP, VMware, bare 
 
 ## 7. Launch EC2 from AMI
 
-This POC does not include Terraform. Launch manually:
+This project does not include Terraform. Launch manually:
 
 **AWS Console:**
 1. EC2 → Launch instance

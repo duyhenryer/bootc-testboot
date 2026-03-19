@@ -68,7 +68,7 @@ All scripts live in `/usr/libexec/testboot/` and are installed from `bootc/libs/
 | `gen-password.sh` | executable | Atomic random password generation. Idempotent -- skips if file exists. |
 | `wait-for-service.sh` | executable | TCP readiness probe. Polls until a host:port is reachable or timeout. |
 | `healthcheck.sh` | executable | HTTP health endpoint check. Returns exit 0/1 based on HTTP status code. |
-| `render-env.sh` | executable | Config template renderer. Replaces `@@VAR@@` placeholders with environment values. |
+| `gen-tls-cert.sh` | executable | Self-signed TLS cert generator (CA + server). Idempotent -- skips if certs exist. |
 
 ### Usage Examples
 
@@ -86,9 +86,8 @@ log_info "Starting database migration"
 # Verify the app is healthy after startup
 /usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8080/health 10
 
-# Render a config template with runtime credentials
-export DB_PASS=$(cat /var/lib/myapp/db-password)
-/usr/libexec/testboot/render-env.sh /usr/share/myapp/config.tmpl /run/myapp/config.conf
+# Generate self-signed TLS certs on first boot (idempotent)
+/usr/libexec/testboot/gen-tls-cert.sh /var/lib/myapp/tls localhost
 ```
 
 ---

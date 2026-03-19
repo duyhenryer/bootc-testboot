@@ -1,19 +1,23 @@
 # bootc-image-builder customizations for GCE (Google Compute Engine)
 # Docs: https://github.com/osbuild/bootc-image-builder#-build-config
 #
-# Build command:
+# Build with --type raw, then tar.gz for GCE:
 #   sudo podman run --rm --privileged \
 #     --security-opt label=type:unconfined_t \
 #     -v /var/lib/containers/storage:/var/lib/containers/storage \
-#     -v ./builder/gce:/config:ro \
-#     -v ./output/gce:/output \
+#     -v "$(pwd)/builder/gce":/config:ro \
+#     -v "$(pwd)/output/gce":/output \
 #     quay.io/centos-bootc/bootc-image-builder:latest \
 #     --type raw --rootfs ext4 \
+#     --chown $(id -u):$(id -g) \
 #     --config /config/config.toml \
 #     ghcr.io/duyhenryer/bootc-testboot:latest
 #
 # After build, package for GCE:
 #   cd output/image && tar -Szcf ../bootc-centos9.tar.gz disk.raw
+#
+# Cloud best practice: attach Persistent Disk for MongoDB data
+# rather than baking large partitions into the boot disk.
 
 [[customizations.user]]
 name = "devops"
@@ -24,18 +28,11 @@ groups = ["wheel"]
 mountpoint = "/"
 minsize = "10 GiB"
 
-[[customizations.filesystem]]
-mountpoint = "/var/data"
-minsize = "5 GiB"
-
-# Production example (uncomment as needed):
+# Cloud best practice: attach Persistent Disk for MongoDB data
+# rather than baking it into the boot disk.
 # [[customizations.filesystem]]
 # mountpoint = "/var/lib/mongodb"
 # minsize = "50 GiB"
-#
-# [[customizations.filesystem]]
-# mountpoint = "/var/log"
-# minsize = "10 GiB"
 
 [customizations.kernel]
 append = "console=ttyS0,115200n8"

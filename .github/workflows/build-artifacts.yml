@@ -152,12 +152,14 @@ jobs:
               -e "s/DISK_SIZE_GB/${DISK_SIZE_GB}/" \
               -e "s/CPU_COUNT/${CPU_COUNT}/g" \
               -e "s/MEMORY_MB/${MEMORY_MB}/g" \
-              builder/ova/bootc-poc.ovf > output/ova/${OVA_NAME}.ovf
+              builder/ova/bootc-testboot.ovf > output/ova/${OVA_NAME}.ovf
 
           cp "$VMDK_FILE" output/ova/${VMDK_BASENAME}
 
           cd output/ova
-          sha256sum ${OVA_NAME}.ovf ${VMDK_BASENAME} > ${OVA_NAME}.mf
+          for f in ${OVA_NAME}.ovf ${VMDK_BASENAME}; do
+            echo "SHA256($f)= $(sha256sum "$f" | awk '{print $1}')"
+          done > ${OVA_NAME}.mf
           tar cf ${OVA_NAME}.ova ${OVA_NAME}.ovf ${VMDK_BASENAME} ${OVA_NAME}.mf
           echo "OVA created: ${OVA_NAME}.ova ($(du -h ${OVA_NAME}.ova | cut -f1))"
 
