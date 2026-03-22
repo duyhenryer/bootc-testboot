@@ -120,7 +120,7 @@ jobs:
             -f base/${{ steps.path.outputs.path }}/Containerfile .
 
       - name: Strict lint
-        run: podman run --rm ${{ env.BASE_IMAGE }}:${{ matrix.distro }}-latest-${{ matrix.arch }} bootc container lint --fatal-warnings
+        run: podman run --rm ${{ env.BASE_IMAGE }}:${{ matrix.distro }}-latest-${{ matrix.arch }} bootc container lint --fatal-warnings || exit 1
 
       - name: Login to GHCR
         run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin

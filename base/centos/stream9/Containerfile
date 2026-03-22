@@ -37,5 +37,5 @@ RUN rm -rf /var/home/appuser/.bash* \
     /run/cloud-init /run/rhsm
 
 # --- Validate ---
-RUN bootc container lint --fatal-warnings
+RUN bootc container lint --fatal-warnings || exit 1
 LABEL containers.bootc=1

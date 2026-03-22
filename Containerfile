@@ -79,7 +79,7 @@ RUN rm -f /var/log/mongodb/mongod.log && \
     /run/cloud-init /run/mongodb /run/rhsm
 
 # --- Validate ---
-RUN bootc container lint --fatal-warnings
+RUN bootc container lint --fatal-warnings || exit 1
 
 # --- Image metadata ---
 ARG BASE_IMAGE

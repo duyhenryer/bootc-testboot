@@ -76,7 +76,7 @@ lint: ## Run bootc container lint on the built image
 	$(PODMAN) run --rm $(IMAGE):latest bootc container lint
 
 lint-strict: ## Run bootc container lint --fatal-warnings (used in CI)
-	$(PODMAN) run --rm $(IMAGE):latest bootc container lint --fatal-warnings
+	$(PODMAN) run --rm $(IMAGE):latest bootc container lint --fatal-warnings || exit 1
 
 # ---------------------------------------------------------------------------
 # Local Testing (no cloud deploy needed)
