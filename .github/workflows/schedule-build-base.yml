@@ -1,0 +1,12 @@
+name: Schedule Build Base Images
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # Daily 6am UTC
+
+jobs:
+  trigger-build-base:
+    uses: ./.github/workflows/build-base.yml
+    permissions:
+      contents: read
+      packages: write
