@@ -14,7 +14,7 @@ Before starting, ensure you have:
 | **EC2 builder instance** | For AMI creation: **t3.large** or larger, with **podman** installed, running as root |
 | **VM Import service role** | Configured for S3/EC2 import (see [AWS VM Import prerequisites](https://docs.aws.amazon.com/vm-import/latest/userguide/vmie_prereqs.html)) |
 | **S3 bucket** | For bootc-image-builder intermediate artifacts |
-| **Go 1.22+** | For building apps locally (`go version`) |
+| **Go 1.25+** | For building apps locally (`go version`) |
 | **GitHub account** | With access to GitHub Container Registry (GHCR) |
 
 ---

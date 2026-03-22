@@ -205,7 +205,7 @@ Use `podman build`, `buildah`, or `docker build`—any tool that produces OCI im
 # =============================================================================
 # Stage 1: Build application binaries (optional)
 # =============================================================================
-FROM docker.io/library/golang:1.22-alpine AS builder
+FROM docker.io/library/golang:1.25-alpine AS builder
 WORKDIR /build
 COPY repos/hello/go.mod repos/hello/
 COPY repos/hello/*.go   repos/hello/
