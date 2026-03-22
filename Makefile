@@ -1,4 +1,4 @@
-.PHONY: base apps build test lint lint-strict test-smoke test-integration audit help clean
+.PHONY: base apps build test lint lint-strict test-smoke test-integration audit verify-ghcr help clean
 
 # ---------------------------------------------------------------------------
 # Variables (override via env or command line)
@@ -151,6 +151,8 @@ audit: apps ## Build + strict-lint ALL base images and app image locally
 		bootc container lint --fatal-warnings
 	@echo "=== ALL AUDIT CHECKS PASSED ==="
 
+verify-ghcr: ## Pull + verify all GHCR packages (scripts/verify-ghcr-packages.sh; needs disk space)
+	@./scripts/verify-ghcr-packages.sh
 
 clean: ## Clean build artifacts
 	rm -rf output/

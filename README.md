@@ -9,12 +9,12 @@ Production-ready **bootc Image-Based OS** — using OCI container images to buil
 ```mermaid
 flowchart LR
     subgraph layer1 ["Layer 1 — Base (weekly)"]
-        BaseShared["base/shared/\nsysctl, systemd, SSH\njournald, chrony"]
+        BaseRootfs["base/rootfs/\nshared tuning overlay"]
         CentOS9["centos/stream9"]
         CentOS10["centos/stream10"]
         Fedora40["fedora/40"]
         Fedora41["fedora/41"]
-        BaseShared --> CentOS9 & CentOS10 & Fedora40 & Fedora41
+        BaseRootfs --> CentOS9 & CentOS10 & Fedora40 & Fedora41
     end
 
     subgraph layer2 ["Layer 2 — App (per commit)"]
@@ -60,13 +60,13 @@ make lint
 ```
 
 > Disk images (AMI, VMDK, OVA, QCOW2, ISO) are built exclusively in CI via
-> `workflow_dispatch` on `build-bootc.yml`. See [CI Architecture](#ci-architecture-distribution-model) below.
+> `workflow_dispatch` on [`build-artifacts.yml`](.github/workflows/build-artifacts.yml). See [CI Architecture](#ci-architecture-distribution-model) below.
 
 ## Project Structure
 
 ```
 base/
-  shared/                  Production tuning (sysctl, systemd, SSH, journald, chrony)
+  rootfs/                  Shared rootfs overlay (COPY in all base Containerfiles)
   fedora/40/Containerfile  Base image: Fedora 40
   fedora/41/Containerfile  Base image: Fedora 41
   centos/stream9/          Base image: CentOS Stream 9
@@ -89,7 +89,8 @@ repos/
   hello/                   Mock App Source Repository (Go code)
     main.go, go.mod, main_test.go
 Containerfile              Layer 2: application image
-Makefile                   Local dev targets (apps/test/build/lint/clean)
+scripts/verify-ghcr-packages.sh  Post-publish GHCR check (also: make verify-ghcr)
+Makefile                   Run `make help` — base, build, audit, verify-ghcr, test-smoke, lint-strict, …
 ```
 
 ## Adding a New App
@@ -122,7 +123,7 @@ graph TD
         PR1[Pull Request] --> PR2(Build single-arch + lint-strict)
     end
 
-    subgraph L3["Layer 3: Artifact Generation (workflow_dispatch)"]
+    subgraph L3["Layer 3: build-artifacts.yml (workflow_dispatch)"]
         G -. manual trigger .-> H{bootc-image-builder}
         H -->|format: qcow2| I[qcow2 file]
         H -->|format: ami| J[ami file]
@@ -148,7 +149,7 @@ graph TD
 ```
 
 > **Note:** Disk image artifacts are **not** built on every push. Use `workflow_dispatch`
-> on `build-bootc.yml` with the `formats` input to trigger artifact generation on-demand.
+> on [`build-artifacts.yml`](.github/workflows/build-artifacts.yml) with the `formats` input to trigger artifact generation on-demand.
 
 ### Auditing Created Artifact Images
 Because artifact distribution images are packaged using `scratch` (meaning they do not contain a shell or OS utilities like `ls`), you cannot use `podman run` to inspect them directly. Instead, you can audit the contents of an artifact image by creating a dummy container and exporting its filesystem hierarchy using `tar`.
@@ -166,6 +167,8 @@ podman export $ctr | tar -tv
 # 3. Clean up the dummy container
 podman rm $ctr
 ```
+
+For scripted verification of **all** published tags (skopeo + optional full `podman pull`), run `./scripts/verify-ghcr-packages.sh` or `make verify-ghcr` — see [docs/project/010-ghcr-audit.md](docs/project/010-ghcr-audit.md). Public GHCR images need no login; large pulls need tens of GB free disk — use `VERIFY_SKIP_PULL=1` for metadata-only.
 
 ## Versioning & Tagging
 
@@ -246,3 +249,4 @@ How we use bootc to build, test, and deliver our product.
 | [007](docs/project/007-local-testing-guide.md) | Local Testing Guide |
 | [008](docs/project/008-test-case-registry.md) | Test Case Registry |
 | [009](docs/project/009-rootfs-overlay-guide.md) | Rootfs Overlay Guide (build-time to runtime mapping) |
+| [010](docs/project/010-ghcr-audit.md) | GHCR audit (`verify-ghcr-packages.sh`, skopeo, podman) |
