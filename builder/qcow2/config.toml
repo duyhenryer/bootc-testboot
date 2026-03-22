@@ -1,4 +1,6 @@
-# bootc-image-builder customizations for QCOW2 (local VM testing)
+# bootc-image-builder customizations for raw disk image
+# Raw images are full block copies — keep partitions small so CI can package the
+# artifact; attach separate volumes for MongoDB data in production (see AMI config).
 # Docs: https://github.com/osbuild/bootc-image-builder#-build-config
 
 [[customizations.user]]
@@ -10,14 +12,6 @@ groups = ["wheel"]
 [[customizations.filesystem]]
 mountpoint = "/"
 minsize = "10 GiB"
-
-[[customizations.filesystem]]
-mountpoint = "/var/lib/mongodb"
-minsize = "50 GiB"
-
-[[customizations.filesystem]]
-mountpoint = "/var/log"
-minsize = "5 GiB"
 
 [customizations.kernel]
 append = "console=tty0 console=ttyS0,115200n8"
