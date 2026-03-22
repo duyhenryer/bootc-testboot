@@ -39,35 +39,38 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
-      distro: ${{ steps.set.outputs.distro }}
+      distros: ${{ steps.set.outputs.distros }}
       platforms: ${{ steps.set.outputs.platforms }}
     steps:
       - id: set
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             PLATFORMS="${{ inputs.platforms }}"
-            DISTRO="${{ inputs.base_distro }}"
+            DISTROS=("${{ inputs.base_distro }}")
           else
             PLATFORMS="linux/amd64,linux/arm64"
-            DISTRO="centos-stream9"
+            DISTROS=("centos-stream9" "centos-stream10" "fedora-40" "fedora-41")
           fi
 
-          echo "distro=$DISTRO" >> "$GITHUB_OUTPUT"
+          DISTROS_CSV=$(IFS=','; echo "${DISTROS[*]}")
+          echo "distros=$DISTROS_CSV" >> "$GITHUB_OUTPUT"
           echo "platforms=$PLATFORMS" >> "$GITHUB_OUTPUT"
 
           MATRIX='{"include":['
           first=1
           IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
-          for PLATFORM in "${PLATFORM_ARRAY[@]}"; do
-            ARCH="${PLATFORM#linux/}"
-            if [ "$ARCH" = "arm64" ]; then
-              RUNNER="ubuntu-24.04-arm"
-            else
-              RUNNER="ubuntu-latest"
-            fi
-            if [ $first -eq 0 ]; then MATRIX+=","; fi
-            first=0
-            MATRIX+="{\"distro\":\"$DISTRO\",\"platform\":\"$PLATFORM\",\"arch\":\"$ARCH\",\"runner\":\"$RUNNER\"}"
+          for D in "${DISTROS[@]}"; do
+            for PLATFORM in "${PLATFORM_ARRAY[@]}"; do
+              ARCH="${PLATFORM#linux/}"
+              if [ "$ARCH" = "arm64" ]; then
+                RUNNER="ubuntu-24.04-arm"
+              else
+                RUNNER="ubuntu-latest"
+              fi
+              if [ $first -eq 0 ]; then MATRIX+=","; fi
+              first=0
+              MATRIX+="{\"distro\":\"$D\",\"platform\":\"$PLATFORM\",\"arch\":\"$ARCH\",\"runner\":\"$RUNNER\"}"
+            done
           done
           MATRIX+=']}'
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
@@ -80,7 +83,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.22"
       - name: Run tests
@@ -167,7 +170,7 @@ jobs:
       - uses: ./.github/actions/create-manifest
         with:
           image: ${{ env.IMAGE }}
-          distros: ${{ needs.matrix.outputs.distro }}
+          distros: ${{ needs.matrix.outputs.distros }}
           version: ${{ needs.build.outputs.version }}
           platforms: ${{ needs.matrix.outputs.platforms }}
           github-token: ${{ github.token }}
