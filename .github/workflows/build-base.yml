@@ -2,7 +2,7 @@ name: Build base images
 
 on:
   schedule:
-    - cron: '0 6 * * 1'   # Weekly Monday 6am UTC
+    - cron: '0 6 * * *'   # Daily 6am UTC
   push:
     tags: ['base-v*']      # Release: git tag base-v1.0.0
   workflow_dispatch:
