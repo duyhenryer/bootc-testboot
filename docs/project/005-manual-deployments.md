@@ -73,6 +73,8 @@ The disk file path **inside** the OCI container depends on the format. These pat
 | OVA | `-ova` | `/*.ova` | `*-centos-stream9-ova:latest-amd64` |
 | Anaconda ISO | `-anaconda-iso` | `/bootiso/disk.iso` | `*-centos-stream9-anaconda-iso:latest-amd64` |
 
+To verify all published images and these paths automatically, run [010-ghcr-audit.md](010-ghcr-audit.md) (`./scripts/verify-ghcr-packages.sh` or `make verify-ghcr`).
+
 ### How to extract a disk file (generic steps)
 
 This 3-step pattern works for any format:

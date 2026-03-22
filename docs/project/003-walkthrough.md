@@ -171,31 +171,24 @@ Connect via **AWS Systems Manager Session Manager** (or SSH if configured):
 aws ssm start-session --target i-0123456789abcdef0
 ```
 
-On the instance, clone the repo and run health checks:
+On the instance there is **no** project `Makefile` — the OS is the bootc deployment, not a dev checkout. Verify by hand (see also [004-runbook.md](004-runbook.md)):
 
 ```bash
-git clone https://github.com/duyhenryer/bootc-testboot.git
-cd bootc-testboot
-make verify
+# Booted image and deployment
+sudo bootc status
+
+# Expected services (adjust names to match your image)
+systemctl is-active nginx hello.service sshd chronyd || true
+
+# HTTP (nginx → hello on 8080, if configured)
+curl -sf -o /dev/null -w "%{http_code}\n" http://127.0.0.1/ || true
+curl -sf http://127.0.0.1:8080/health || true
+
+# Immutable /usr
+touch /usr/bin/.test 2>&1 || echo "/usr is not writable (expected)"
 ```
 
-**Expected output:**
-
-```
-==> bootc status
-Deployment: quay.io/fedora/fedora-bootc:41 ...
-
-==> Health checks:
-  [PASS] bootc status
-  [PASS] nginx running
-  [PASS] hello.service running
-  [PASS] cloud-init running
-  [PASS] curl localhost:80
-  [PASS] curl localhost:8080
-  [PASS] /usr is read-only
-
-==> Results: 7 passed, 0 failed
-```
+**Registry audit (on your laptop, not on the VM):** after CI publishes to GHCR, run `make verify-ghcr` or `./scripts/verify-ghcr-packages.sh` to pull and verify artifact images — [010-ghcr-audit.md](010-ghcr-audit.md).
 
 ---
 

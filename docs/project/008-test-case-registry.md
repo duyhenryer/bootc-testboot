@@ -27,8 +27,9 @@ This document catalogues every test case used to validate the bootc image, both 
 | TC-10 | Lint | bootc container lint | `make lint` | Automated |
 | TC-10b | Lint | Lint warning analysis | Manual | Manual |
 | TC-11 | Docs | Documentation cross-references | Manual | Needs automation |
+| TC-12 | Registry | Post-publish GHCR verification | `make verify-ghcr` (or `VERIFY_SKIP_PULL=1` for metadata-only) | Automated |
 
-**Total: 19 test cases** (7 automated, 5 manual-only, 7 candidates for automation)
+**Total: 20 test cases** (8 automated, 5 manual-only, 7 candidates for automation)
 
 ---
 
@@ -338,10 +339,11 @@ bootc-testboot/
 ├── builder/                 # Disk image builder configs (QCOW2, VMDK, OVA)
 ├── Containerfile            # Layer 2 build
 ├── Makefile
+├── scripts/verify-ghcr-packages.sh
 ├── .github/workflows/
 └── docs/
     ├── bootc/               # bootc learning docs (001-012)
-    └── project/             # Project docs (001-009)
+    └── project/             # Project docs (001-010)
 ```
 
 - **Checks:**
@@ -373,6 +375,12 @@ bootc-testboot/
 | `/var/home/appuser/.bashrc` | useradd skeleton | Skeleton dotfiles copied during user creation |
 
 - **Resolution:** These warnings cannot be fixed without modifying the CentOS base image itself. Use `make lint` (without `--fatal-warnings`) for local testing.
+
+### TC-12: Post-publish GHCR verification
+
+- **Command:** `make verify-ghcr` (runs [`scripts/verify-ghcr-packages.sh`](../../scripts/verify-ghcr-packages.sh))
+- **What it tests:** Remote manifests (`skopeo inspect`) and, unless `VERIFY_SKIP_PULL=1`, full `podman pull` plus tarball path checks for disk artifacts and bootc labels for base/app images — see [010-ghcr-audit.md](010-ghcr-audit.md).
+- **Not the same as:** `make audit` (local rebuild + lint, no registry pull).
 
 ---
 

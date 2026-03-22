@@ -47,7 +47,14 @@ flowchart TB
 | **Kernel** | Linux kernel + modules | `/usr/lib/modules` (from base image) |
 | **Userspace** | systemd, coreutils, packages | `RUN dnf install ...` |
 | **Apps** | Binaries + systemd units | `COPY bootc/apps/*/rootfs/` → `/usr/bin`, `/usr/lib/systemd/system` |
-| **Configs** | nginx, sshd, etc. | `COPY base/rootfs/` \u0026 `COPY bootc/services/*/rootfs/` |
+| **Configs** | nginx, sshd, etc. | `COPY base/rootfs/` and `COPY bootc/services/*/rootfs/` |
+
+### Makefile: `audit` vs `verify-ghcr`
+
+| Target | When to use | What it does |
+|--------|-------------|--------------|
+| `make audit` | Before push / local CI parity | Builds **all** base images + app image on disk, runs `bootc container lint --fatal-warnings` on each. **No** `podman pull` from GHCR. |
+| `make verify-ghcr` | After CI published to GHCR | Runs [`scripts/verify-ghcr-packages.sh`](../../scripts/verify-ghcr-packages.sh): `skopeo inspect` and `podman pull` of **remote** tags, validates artifact paths. Run on a dev machine with free disk; see [010-ghcr-audit.md](010-ghcr-audit.md). Use `VERIFY_SKIP_PULL=1` for metadata-only. |
 
 ---
 
