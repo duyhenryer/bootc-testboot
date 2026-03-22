@@ -1,4 +1,4 @@
-.PHONY: base apps build test lint lint-strict test-smoke test-integration help clean
+.PHONY: base apps build test lint lint-strict test-smoke test-integration audit help clean
 
 # ---------------------------------------------------------------------------
 # Variables (override via env or command line)
@@ -31,7 +31,7 @@ base: ## Build base image (BASE_DISTRO=centos-stream9|fedora-41|...)
 		echo "       Valid: centos-stream9, centos-stream10, fedora-40, fedora-41"; \
 		exit 1; \
 	fi
-	$(PODMAN) build -f $(BASE_FILE) \
+	$(PODMAN) build --isolation chroot -f $(BASE_FILE) \
 		-t $(BASE_IMAGE):$(BASE_DISTRO)-$(VERSION) \
 		-t $(BASE_IMAGE):$(BASE_DISTRO)-latest .
 
@@ -64,7 +64,7 @@ test: ## Run Go tests for all apps
 # ---------------------------------------------------------------------------
 
 build: apps ## Build application image (uses base, BASE_DISTRO=centos-stream9|...)
-	$(PODMAN) build \
+	$(PODMAN) build --isolation chroot \
 		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
 		--build-arg BASE_DISTRO=$(BASE_DISTRO) \
 		--build-arg BASE_IMAGE_VERSION=$(BASE_IMAGE_VERSION) \
@@ -76,7 +76,7 @@ lint: ## Run bootc container lint on the built image
 	$(PODMAN) run --rm $(IMAGE):latest bootc container lint
 
 lint-strict: ## Run bootc container lint --fatal-warnings (used in CI)
-	$(PODMAN) run --rm $(IMAGE):latest bootc container lint --fatal-warnings
+	$(PODMAN) run --rm $(IMAGE):latest bootc container lint --fatal-warnings || exit 1
 
 # ---------------------------------------------------------------------------
 # Local Testing (no cloud deploy needed)
@@ -135,6 +135,22 @@ test-integration: build ## Integration test: run app in read-only mode (simulate
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+ALL_DISTROS = centos-stream9 centos-stream10 fedora-40 fedora-41
+
+audit: apps ## Build + strict-lint ALL base images and app image locally
+	@for d in $(ALL_DISTROS); do \
+		echo "==> [audit] base $$d"; \
+		$(MAKE) base BASE_DISTRO=$$d || exit 1; \
+		$(PODMAN) run --rm $(BASE_IMAGE):$$d-latest \
+			bootc container lint --fatal-warnings || exit 1; \
+	done
+	@echo "==> [audit] app $(BASE_DISTRO)"
+	@$(MAKE) build
+	@$(PODMAN) run --rm $(IMAGE):latest \
+		bootc container lint --fatal-warnings
+	@echo "=== ALL AUDIT CHECKS PASSED ==="
+
 
 clean: ## Clean build artifacts
 	rm -rf output/

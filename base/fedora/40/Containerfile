@@ -9,7 +9,7 @@ RUN dnf install -y \
         htop curl jq lsof tcpdump sysstat vim-minimal \
         cloud-init openssh-server firewalld chrony \
     && dnf clean all \
-    && rm -rf /var/cache/{dnf,ldconfig} /var/log/dnf*
+    && rm -rf /var/cache/{dnf,ldconfig,libdnf5} /var/log/{dnf*,hawkey*} /var/lib/dnf
 
 # --- Production tuning (Rootfs Overlay) ---
 COPY base/rootfs/ /
@@ -27,10 +27,12 @@ RUN systemctl enable cloud-init sshd firewalld chronyd systemd-resolved NetworkM
 
 # --- Clean /var and /run artifacts from package install + useradd ---
 RUN rm -rf /var/home/appuser/.bash* \
-    /var/lib/rhsm/productid.js /var/lib/rhsm/repo_server_val \
+    /var/lib/dnf /var/lib/rhsm \
+    /var/log/{dnf*,hawkey*,rhsm} /var/log/sa \
+    /var/cache/{dnf,ldconfig,libdnf5} \
     /var/roothome/buildinfo \
     /run/cloud-init /run/rhsm
 
 # --- Validate ---
-RUN bootc container lint
+RUN bootc container lint --fatal-warnings || exit 1
 LABEL containers.bootc=1

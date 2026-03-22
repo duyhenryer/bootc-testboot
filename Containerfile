@@ -71,13 +71,15 @@ RUN for svc in /usr/lib/systemd/system/*.service; do \
 
 # --- Clean /var and /run artifacts from package install + overlay layer merges ---
 RUN rm -f /var/log/mongodb/mongod.log && \
-    rm -rf /var/lib/rhsm/productid.js /var/lib/rhsm/repo_server_val \
+    rm -rf /var/lib/dnf /var/lib/rhsm \
+    /var/log/{dnf*,hawkey*,rhsm} /var/log/sa \
+    /var/cache/{dnf,ldconfig,libdnf5} \
     /var/home/appuser/.bash* \
     /var/roothome/buildinfo \
     /run/cloud-init /run/mongodb /run/rhsm
 
 # --- Validate ---
-RUN bootc container lint
+RUN bootc container lint --fatal-warnings || exit 1
 
 # --- Image metadata ---
 ARG BASE_IMAGE
