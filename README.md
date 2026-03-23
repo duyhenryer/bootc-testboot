@@ -60,7 +60,7 @@ make lint
 ```
 
 > Disk images (AMI, VMDK, OVA, QCOW2, ISO) are built exclusively in CI via
-> `workflow_dispatch` on [`build-artifacts.yml`](.github/workflows/build-artifacts.yml). See [CI Architecture](#ci-architecture-distribution-model) below.
+> `workflow_dispatch` on [`build-artifacts.yml`](.github/workflows/build-artifacts.yml). The default **base distro** is **all** (all four distros); override to a single distro when needed. See [CI Architecture](#ci-architecture-distribution-model) below.
 
 ## Project Structure
 
@@ -149,7 +149,7 @@ graph TD
 ```
 
 > **Note:** Disk image artifacts are **not** built on every push. Use `workflow_dispatch`
-> on [`build-artifacts.yml`](.github/workflows/build-artifacts.yml) with the `formats` input to trigger artifact generation on-demand.
+> on [`build-artifacts.yml`](.github/workflows/build-artifacts.yml) with the `formats` input to trigger artifact generation on-demand (defaults to building **all** distros unless you select one).
 
 ### Auditing Created Artifact Images
 Because artifact distribution images are packaged using `scratch` (meaning they do not contain a shell or OS utilities like `ls`), you cannot use `podman run` to inspect them directly. Instead, you can audit the contents of an artifact image by creating a dummy container and exporting its filesystem hierarchy using `tar`.
