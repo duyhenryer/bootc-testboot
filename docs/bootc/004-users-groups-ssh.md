@@ -89,8 +89,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 DynamicUser=yes
-StateDirectory=hello
-LogsDirectory=hello
+StateDirectory=bootc-testboot/hello
+LogsDirectory=bootc-testboot/hello
 ExecStart=/usr/bin/hello
 Restart=always
 RestartSec=5
@@ -101,8 +101,8 @@ WantedBy=multi-user.target
 
 **What each line does:**
 - `DynamicUser=yes` — systemd allocates a temporary user for this service. No entry in `/etc/passwd`, no drift across image updates.
-- `StateDirectory=hello` — creates `/var/lib/hello` owned by the dynamic user. Data persists across reboots.
-- `LogsDirectory=hello` — creates `/var/log/hello` owned by the dynamic user.
+- `StateDirectory=bootc-testboot/hello` — creates `/var/lib/bootc-testboot/hello` owned by the dynamic user. Data persists across reboots.
+- `LogsDirectory=bootc-testboot/hello` — creates `/var/log/bootc-testboot/hello` owned by the dynamic user.
 
 ### 2. systemd-sysusers (At Boot)
 

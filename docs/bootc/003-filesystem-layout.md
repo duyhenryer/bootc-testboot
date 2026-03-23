@@ -244,19 +244,19 @@ COPY repos/hello/rootfs/ /
 
 ```conf
 # hello-tmpfiles.conf
-d /var/lib/hello/uploads 0750 - - -
+d /var/lib/bootc-testboot/hello/uploads 0750 - - -
 ```
 
 **Better:** use systemd `StateDirectory=` and `LogsDirectory=`:
 
 ```ini
 [Service]
-StateDirectory=hello
-LogsDirectory=hello
+StateDirectory=bootc-testboot/hello
+LogsDirectory=bootc-testboot/hello
 ExecStart=/usr/bin/hello
 ```
 
-This creates `/var/lib/hello` and `/var/log/hello` automatically—no tmpfiles.d needed for those.
+This creates `/var/lib/bootc-testboot/hello` and `/var/log/bootc-testboot/hello` automatically—no tmpfiles.d needed for those.
 
 ### As of bootc 1.1.6
 

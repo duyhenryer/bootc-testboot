@@ -235,9 +235,9 @@ sudo systemctl reboot         # boots into the previous deployment
 
 Data in `/var` (logs, DB files, app state) is **not** rolled back. To confirm:
 
-1. Before rollback, create a file: `echo "survives" | sudo tee /var/lib/hello/test-survives.txt`
+1. Before rollback, create a file: `echo "survives" | sudo tee /var/lib/bootc-testboot/hello/test-survives.txt`
 2. Run `sudo bootc rollback && sudo systemctl reboot`
-3. After reboot: `cat /var/lib/hello/test-survives.txt` → `survives`
+3. After reboot: `cat /var/lib/bootc-testboot/hello/test-survives.txt` → `survives`
 
 This is by design: DB migrations and app state in `/var` must be handled separately.
 

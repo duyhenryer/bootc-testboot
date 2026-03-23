@@ -100,7 +100,7 @@ These are all machine-specific and merge safely.
 | MongoDB data | `/var/lib/mongodb/` | Yes | Yes |
 | Valkey data | `/var/lib/valkey/` | Yes | Yes |
 | RabbitMQ data | `/var/lib/rabbitmq/` | Yes | Yes |
-| App state | `/var/lib/hello/` | Yes | Yes |
+| App state | `/var/lib/bootc-testboot/hello/` | Yes | Yes |
 | All logs | `/var/log/*/` | Yes | Yes |
 | SSH host keys | `/var/home/`, cloud-init state | Yes | Yes |
 

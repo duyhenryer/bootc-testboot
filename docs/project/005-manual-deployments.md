@@ -16,9 +16,27 @@ Option A requires a bootc OCI image built from this repo. If you have not built 
 **Using Make (recommended):**
 
 ```bash
-make base                    # Layer 1: base OS image
+make base                    # Layer 1: base OS image (default BASE_DISTRO=centos-stream9)
 make build                   # Layer 2: app image (Containerfile)
 ```
+
+`make base` builds **one** base at a time. Valid `BASE_DISTRO` values (same as CI): `centos-stream9`, `centos-stream10`, `fedora-40`, `fedora-41`.
+
+**Build more than one base OS**
+
+```bash
+# Single distro (example)
+make base BASE_DISTRO=centos-stream10
+
+# All four bases in one shell loop (matches Makefile ALL_DISTROS)
+for d in centos-stream9 centos-stream10 fedora-40 fedora-41; do
+  make base BASE_DISTRO="$d"
+done
+```
+
+Layer 2 follows the same variable: run `make build BASE_DISTRO=<distro>` for each app image you need. Override `VERSION` / `BASE_IMAGE_VERSION` if you are not using `latest`.
+
+**Optional — validate every base + one app image:** `make audit` runs `make base` for each distro, runs `bootc container lint` on each base image, then `make build` for the default `BASE_DISTRO` (centos-stream9 unless you override) and lints the app image. Use it when you want a full local quality pass, not only “build all bases.”
 
 **Using podman directly:**
 
@@ -36,9 +54,11 @@ podman build \
     -f Containerfile .
 ```
 
-Change `centos/stream9` to your target distro (`centos/stream10`, `fedora/40`, `fedora/41`). See [Makefile](../../Makefile) for all variables.
+Change `centos/stream9` to your target distro (`centos/stream10`, `fedora/40`, `fedora/41`), and keep **Containerfile path**, **`BASE_DISTRO`**, and **image tags** (`…/base/<distro>:…` and `…/<distro>:…`) aligned. See [Makefile](../../Makefile) for all variables.
 
 After building, verify with `podman images | grep bootc-testboot`. Then proceed to the deployment section for your target (AWS, GCE, VMware).
+
+After a VM is up (e.g. EC2), use [007-local-testing-guide.md](007-local-testing-guide.md) — **Post-deploy audit** — to check `systemd` failed units, app health, MongoDB init, symlinks, and **`hello` log files** (`hello.log`, `healthcheck.log` under `/var/log/bootc-testboot/hello/`).
 
 ---
 

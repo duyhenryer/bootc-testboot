@@ -8,8 +8,6 @@ This project’s images are **public**. You do **not** need `podman login` or a 
 
 **CI:** images and disk artifacts are **linux/amd64** only. Tags are **path-style** (no `-arch` suffix), e.g. `…/bootc-testboot/centos-stream9:latest`, `…/bootc-testboot/centos-stream9/qcow2:latest`. Use `podman pull --platform linux/amd64` when needed. Optional aarch64: see `.github/workflows/build-*.yml` comments.
 
-RabbitMQ registry-side context (mirrors, CS10): [011-rabbitmq-repos-and-cs10.md](011-rabbitmq-repos-and-cs10.md).
-
 ## Private packages (optional note)
 
 If a package is **private**, use `podman login ghcr.io` with a PAT before `podman pull`. Do not commit or share tokens.

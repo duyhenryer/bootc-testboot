@@ -1,0 +1,6 @@
+# Minimal ARP filter rules for arptables.service (avoids missing-config failures if enabled).
+# Default image ships arptables.service **disabled**; edit with `arptables` then refresh from `arptables-save`.
+*filter
+:INPUT ACCEPT
+:OUTPUT ACCEPT
+COMMIT

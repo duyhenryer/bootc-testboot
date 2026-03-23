@@ -2,6 +2,25 @@
 
 How source files in the repository map to their final locations inside a running bootc VM. This is the single reference for understanding "where does this file end up at runtime?"
 
+## Newbie: `/usr` vs `/etc` vs `/var` (and symlinks)
+
+On a bootc host, treat the layers like this:
+
+- **`/usr` (including `/usr/share/...`)** — Shipped **inside the image**. At runtime it is **read-only** in the usual bootc model; OS and app files you bake in the Containerfile live here.
+- **`/etc/...`** — **Mutable** machine configuration. Software often hard-codes paths under `/etc`. This repo keeps the **real** config under `/usr/share/<service>/` and puts a **symlink** in `/etc` so services still see the path they expect, while the content stays part of the immutable image tree.
+- **`/var/...`** — **Persistent state**: databases, logs, secrets generated on first boot, etc.
+
+Quick check on a running VM:
+
+```bash
+ls -la /etc/nginx/nginx.conf
+readlink -f /etc/nginx/nginx.conf
+```
+
+You should see a symlink into `/usr/share/nginx/`.
+
+**`mongodb-init.service`** runs `/usr/libexec/testboot/mongodb-init.sh`, which calls **`mongosh`**. The app image installs the **`mongodb-mongosh`** package alongside `mongodb-org-server` so replica-set init and admin user creation can succeed.
+
 ---
 
 ## 1. The rootfs/ Convention
@@ -49,6 +68,8 @@ Shared utility scripts and system definitions used by all services and apps.
 | `bootc/libs/common/rootfs/usr/libexec/testboot/gen-tls-cert.sh` | `/usr/libexec/testboot/gen-tls-cert.sh` | Read-only | Self-signed TLS cert generator (CA + server) |
 | `bootc/libs/common/rootfs/usr/lib/sysusers.d/appuser.conf` | `/usr/lib/sysusers.d/appuser.conf` | Read-only | Creates `appuser` user/group at boot |
 | `bootc/libs/common/rootfs/usr/lib/tmpfiles.d/testboot-common.conf` | `/usr/lib/tmpfiles.d/testboot-common.conf` | Read-only | Creates shared `/var` directories at boot |
+| `bootc/libs/common/rootfs/etc/sysconfig/arptables` | `/etc/sysconfig/arptables` | Mutable | Minimal ARP rules so `arptables.service` is not `NOTCONFIGURED` if enabled; image ships the unit **disabled** by default |
+| `bootc/libs/common/rootfs/usr/lib/systemd/system-preset/99-bootc-testboot.preset` | `/usr/lib/systemd/system-preset/99-bootc-testboot.preset` | Read-only | Preset: `disable` `arptables.service` and `rdisc.service` (cloud-friendly defaults) |
 
 ### services/mongodb
 
@@ -59,7 +80,7 @@ Shared utility scripts and system definitions used by all services and apps.
 | `bootc/services/mongodb/rootfs/usr/lib/systemd/system/mongod.service.d/override.conf` | `/usr/lib/systemd/system/mongod.service.d/override.conf` | Read-only | systemd drop-in: `StateDirectory=`, `LogsDirectory=`, `After=mongodb-setup.service` |
 | `bootc/services/mongodb/rootfs/usr/lib/systemd/system/mongodb-setup.service` | `/usr/lib/systemd/system/mongodb-setup.service` | Read-only | Oneshot (Before=mongod): generates TLS certs, keyFile, admin password |
 | `bootc/services/mongodb/rootfs/usr/lib/systemd/system/mongodb-init.service` | `/usr/lib/systemd/system/mongodb-init.service` | Read-only | Oneshot (After=mongod): rs.initiate() + create admin user |
-| `bootc/services/mongodb/rootfs/usr/libexec/testboot/mongodb-init.sh` | `/usr/libexec/testboot/mongodb-init.sh` | Read-only | Script for replica set init and admin user creation |
+| `bootc/services/mongodb/rootfs/usr/libexec/testboot/mongodb-init.sh` | `/usr/libexec/testboot/mongodb-init.sh` | Read-only | Script for replica set init and admin user creation (requires **`mongosh`** from **`mongodb-mongosh`**, installed in the Containerfile) |
 | `bootc/services/mongodb/rootfs/usr/lib/sysusers.d/mongod.conf` | `/usr/lib/sysusers.d/mongod.conf` | Read-only | Creates `mongod` user/group for `bootc container lint` |
 | `bootc/services/mongodb/rootfs/usr/lib/tmpfiles.d/mongodb.conf` | `/usr/lib/tmpfiles.d/mongodb.conf` | Read-only | Creates `/var/lib/mongodb`, `/var/lib/mongodb/tls`, `/var/log/mongodb` at boot |
 
@@ -100,8 +121,9 @@ Plus a symlink: `/etc/rabbitmq/rabbitmq.conf` -> `/usr/share/rabbitmq/rabbitmq.c
 
 | Source Path | Runtime Path | Zone | Purpose |
 |-------------|-------------|------|---------|
-| `bootc/apps/hello/rootfs/usr/lib/systemd/system/hello.service` | `/usr/lib/systemd/system/hello.service` | Read-only | systemd unit for the hello app |
-| `bootc/apps/hello/rootfs/usr/lib/tmpfiles.d/hello.conf` | `/usr/lib/tmpfiles.d/hello.conf` | Read-only | Creates hello app `/var` dirs at boot |
+| `bootc/apps/hello/rootfs/usr/lib/systemd/system/hello.service` | `/usr/lib/systemd/system/hello.service` | Read-only | systemd unit: `LOG_FILE` → `/var/log/bootc-testboot/hello/hello.log` + journal; healthcheck → `/var/log/bootc-testboot/hello/healthcheck.log` |
+| `bootc/apps/hello/rootfs/etc/logrotate.d/hello` | `/etc/logrotate.d/hello` | Read-only | Weekly rotate for `/var/log/bootc-testboot/hello/*.log` (`copytruncate`, `su hello hello`) |
+| `bootc/apps/hello/rootfs/usr/lib/tmpfiles.d/hello.conf` | `/usr/lib/tmpfiles.d/hello.conf` | Read-only | Optional extra tmpfiles; `StateDirectory`/`LogsDirectory` create `/var/lib`/`/var/log` paths |
 | `bootc/apps/hello/rootfs/usr/share/nginx/conf.d/hello.conf` | `/usr/share/nginx/conf.d/hello.conf` | Read-only | nginx vhost reverse proxy config |
 
 The hello binary itself comes from a separate COPY: `COPY output/bin/ /usr/bin/` (built by `make apps` from `repos/hello/`).

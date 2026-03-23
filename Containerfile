@@ -27,7 +27,8 @@ RUN rpm --import https://pgp.mongodb.com/server-8.0.asc && \
     rpm --import https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-erlang.E495BB49CC4BBE5B.key && \
     rpm --import https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-server.9F4587F226208342.key
 
-RUN dnf install -y logrotate nginx mongodb-org-server erlang rabbitmq-server valkey && \
+RUN dnf install -y logrotate nginx mongodb-org-server mongodb-mongosh erlang rabbitmq-server valkey \
+      iptables arptables iputils && \
     dnf clean all && \
     rm -rf /var/cache/{dnf,ldconfig} && \
     rm -rf /var/log/{dnf*,hawkey*,rhsm} /var/lib/dnf
@@ -60,6 +61,11 @@ RUN for svc in /usr/lib/systemd/system/*.service; do \
         systemctl enable "$(basename "$svc")" 2>/dev/null || true; \
       fi; \
     done
+
+# Cloud / generic hosts: do not keep arptables or rdisc enabled (often fail or are unused on VPC VMs).
+RUN systemctl disable arptables.service rdisc.service 2>/dev/null || true && \
+    rm -f /etc/systemd/system/multi-user.target.wants/arptables.service \
+          /etc/systemd/system/multi-user.target.wants/rdisc.service
 
 # --- Clean /var and /run artifacts from package install + overlay layer merges ---
 RUN rm -f /var/log/mongodb/mongod.log && \

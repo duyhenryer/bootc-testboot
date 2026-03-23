@@ -1,0 +1,4 @@
+# Default-off for services that are rarely needed on cloud VMs and often show as failed
+# if auto-enabled without extra host networking policy.
+disable arptables.service
+disable rdisc.service
