@@ -13,9 +13,9 @@ on:
           - fedora-40
           - fedora-41
       platforms:
-        description: 'Platforms to build (comma-separated)'
+        description: 'Platforms to build (comma-separated); amd64 only for now'
         required: true
-        default: 'linux/amd64,linux/arm64'
+        default: 'linux/amd64'
       formats:
         description: 'Export formats (comma-separated)'
         required: true
@@ -30,6 +30,11 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
+  # --- Optional future aarch64 (not enabled; CI is linux/amd64 only) ---
+  # To restore arm64: set inputs.platforms to include linux/arm64; in the matrix loop below,
+  # use RUNNER=ubuntu-24.04-arm when ARCH=arm64 else ubuntu-latest. Artifact manifests combine
+  # formats x platforms like today.
+  # ---
   # ---------------------------------------------------------------------------
   # Build matrix computation
   # ---------------------------------------------------------------------------
@@ -59,11 +64,7 @@ jobs:
           IFS=',' read -ra FORMAT_ARRAY <<< "$FORMATS"
           for PLATFORM in "${PLATFORM_ARRAY[@]}"; do
             ARCH="${PLATFORM#linux/}"
-            if [ "$ARCH" = "arm64" ]; then
-              RUNNER="ubuntu-24.04-arm"
-            else
-              RUNNER="ubuntu-latest"
-            fi
+            RUNNER="ubuntu-latest"
             for FMT in "${FORMAT_ARRAY[@]}"; do
               if [ $first -eq 0 ]; then MATRIX+=","; fi
               first=0

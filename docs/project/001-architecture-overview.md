@@ -130,7 +130,7 @@ flowchart LR
 
     subgraph image ["Image / VM (runtime)"]
         libexec["/usr/libexec/testboot/*.sh"]
-        share["/usr/share/mongodb/ redis/ nginx/"]
+        share["/usr/share/mongodb/ valkey/ nginx/"]
         systemd["/usr/lib/systemd/system/"]
         tmpfiles["/usr/lib/tmpfiles.d/"]
         sysusers["/usr/lib/sysusers.d/"]
@@ -274,7 +274,7 @@ flowchart TB
 
     subgraph Production["Full Stack"]
         N2["nginx (reverse proxy)"]
-        R[redis]
+        V[valkey]
         M[rabbitmq]
         A1[app-api]
         A2[app-worker]
@@ -297,7 +297,7 @@ flowchart TB
 | Component | How |
 |-----------|-----|
 | **nginx** | Already present; add more vhosts/config |
-| **redis** | `RUN dnf install redis` + `redis.service` |
+| **valkey** | `RUN dnf install valkey` + `valkey.service` |
 | **rabbitmq** | `RUN dnf install rabbitmq-server` + systemd unit |
 | **Many apps** | `repos/api/`, `repos/worker/`, `repos/web/`; same Containerfile pattern |
 

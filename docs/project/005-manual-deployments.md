@@ -55,10 +55,11 @@ Tags follow this scheme:
 | Tag | Meaning |
 |-----|---------|
 | `latest-amd64` | Latest build for x86_64 |
-| `latest-arm64` | Latest build for aarch64 |
-| `latest` | Multi-arch manifest (auto-selects your platform) |
+| `latest` | Manifest over published per-arch tags (currently **linux/amd64** only in CI) |
 | `v3-amd64` | Version 3 for x86_64 |
-| `v3` | Multi-arch manifest for version 3 |
+| `v3` | Version manifest (currently **amd64** only) |
+
+This repository’s workflows do **not** build or publish `*-arm64` images. A future re-enable would add per-arch tags and list both in the manifest.
 
 ### Artifact path reference
 
@@ -217,13 +218,13 @@ append = "console=tty0 console=ttyS0,115200n8"
 
 ### Target architecture
 
-Use `--target-arch` to build for a different architecture (e.g. amd64 from arm64 Mac):
+Use `--target-arch` when building disk artifacts locally so the output matches the machine you need (e.g. `amd64` when building on an Apple Silicon Mac):
 
 ```bash
 --target-arch amd64
 ```
 
-The bootc OCI image and bootc-image-builder image must support the target arch. Check [Quay](https://quay.io/repository/centos-bootc/bootc-image-builder?tab=tags) for supported architectures.
+The bootc OCI image and bootc-image-builder image must support the target arch. Check [Quay](https://quay.io/repository/centos-bootc/bootc-image-builder?tab=tags) for supported architectures. CI for this repo only produces **amd64** images; there is no published arm64 OCI image from these workflows.
 
 For builder configs per format, see [builder/README.md](../../builder/README.md).
 
@@ -235,7 +236,7 @@ For builder configs per format, see [builder/README.md](../../builder/README.md)
 
 The flow: bootc OCI image → raw disk → S3 → AMI → EC2 instance.
 
-The image includes nginx, MongoDB 8.0, Redis, and the hello app. RabbitMQ is included on x86_64 only (no upstream arm64 packages).
+The image includes nginx, MongoDB 8.0, Valkey, and the hello app. RabbitMQ is included on x86_64 only (no upstream arm64 packages).
 
 ### Prerequisites
 
@@ -431,7 +432,7 @@ aws ec2 describe-import-snapshot-tasks \
 aws ec2 register-image \
     --region "$AWS_REGION" \
     --name "bootc-testboot-centos9-$(date +%Y%m%d)" \
-    --description "bootc CentOS Stream 9 - hello + nginx + MongoDB + Redis" \
+    --description "bootc CentOS Stream 9 - hello + nginx + MongoDB + Valkey" \
     --architecture x86_64 \
     --root-device-name /dev/xvda \
     --virtualization-type hvm \
@@ -463,7 +464,7 @@ Replace `XXXXX` placeholders with the actual IDs from the output of each previou
 
 > **VMDK format also works.** If you built with `--type vmdk` instead of `--type ami`, change `"Format":"raw"` to `"Format":"vmdk"` and the S3 key accordingly.
 
-**For aarch64 (arm64) builds:** use `--architecture arm64` in `register-image` and a Graviton instance type (e.g. `t4g.medium`). RabbitMQ is not available on arm64.
+If you ever use an **aarch64** disk produced outside this repo’s CI, use `--architecture arm64` in `register-image` and a Graviton instance type (e.g. `t4g.medium`). RabbitMQ is not packaged for aarch64 on the same mirrors as x86_64.
 
 #### Method B: import-image (standard Linux only)
 
@@ -507,7 +508,7 @@ aws ec2 run-instances \
     --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=bootc-testboot}]'
 ```
 
-**For aarch64 (arm64) builds:** use a Graviton instance type (e.g. `t4g.medium`). `import-image` detects the architecture automatically.
+For an aarch64 disk image, use a Graviton instance type (e.g. `t4g.medium`). `import-image` detects the architecture automatically. This project’s CI does not publish arm64 artifacts.
 
 ### Connect and verify
 
@@ -522,7 +523,7 @@ aws ssm start-session --target i-XXXXX --region "$AWS_REGION"
 ```bash
 ssh -i ~/.ssh/YOUR_KEY.pem devops@EC2_PUBLIC_IP
 
-systemctl status hello nginx mongod redis
+systemctl status hello nginx mongod valkey
 curl -sf http://127.0.0.1:8080/health
 ```
 
@@ -651,7 +652,7 @@ gcloud compute images create "bootc-centos9-v4" \
     --project="skilled-box-481815-k8" \
     --source-uri="gs://bootc-testboot-drive/bootc-centos9.tar.gz" \
     --guest-os-features=UEFI_COMPATIBLE,VIRTIO_SCSI_MULTIQUEUE \
-    --description="bootc CentOS Stream 9 - hello app + nginx + MongoDB 8.0 + Redis + RabbitMQ"
+    --description="bootc CentOS Stream 9 - hello app + nginx + MongoDB 8.0 + Valkey + RabbitMQ"
 
 # Create VM instance
 gcloud compute instances create "vm-bootc-test" \
@@ -669,7 +670,7 @@ gcloud compute instances create "vm-bootc-test" \
 gcloud compute ssh devops@vm-bootc-test \
     --project=skilled-box-481815-k8 \
     --zone=asia-southeast1-a \
-    --command="systemctl status hello nginx mongod redis rabbitmq-server && curl -sf http://127.0.0.1:8080/health"
+    --command="systemctl status hello nginx mongod valkey rabbitmq-server && curl -sf http://127.0.0.1:8080/health"
 ```
 
 ### Bugs found and fixed
@@ -680,7 +681,7 @@ Issues discovered during GCE deployment:
 |-----|-----|
 | sudoers files had 664 permissions (must be 0440) | `chmod 0440` on sudoers.d files |
 | MongoDB 8.0 removed `storage.journal.enabled` option | Removed obsolete config from `mongod.conf` |
-| Redis SELinux: `redis_t` cannot read `usr_t` (config in `/usr/share/`) | systemd override reads Redis config from `/usr/share/` directly instead of symlink |
+| Valkey SELinux: `valkey_t` cannot read `usr_t` (config in `/usr/share/`) | systemd override reads Valkey config from `/usr/share/` directly instead of symlink |
 
 ---
 
@@ -928,7 +929,7 @@ ovftool output/ova/bootc-testboot.ova ~/vmware/bootc-testboot/bootc-testboot.vmx
 ```bash
 ssh -i ~/.ssh/YOUR_KEY.pem devops@VM_IP_ADDRESS
 
-systemctl status hello nginx mongod redis
+systemctl status hello nginx mongod valkey
 curl -sf http://127.0.0.1:8080/health
 ```
 

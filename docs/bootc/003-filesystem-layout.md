@@ -201,7 +201,7 @@ RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf && \
 
 **On upgrade:** `/usr` is replaced atomically. New config is applied with zero merge conflicts.
 
-This pattern applies to all middleware (nginx, mongodb, redis, rabbitmq) and app configs.
+This pattern applies to all middleware (nginx, mongodb, valkey, rabbitmq) and app configs.
 
 > For full production upgrade scenarios, see [006-production-upgrade-scenarios.md](../project/006-production-upgrade-scenarios.md).
 
@@ -228,7 +228,7 @@ Image v2: /var/lib/mongodb/ (changed structure)
 | Service | Data path | What persists |
 |---------|-----------|---------------|
 | MongoDB | `/var/lib/mongodb/` | Database files, journals |
-| Redis | `/var/lib/redis/` | RDB snapshots, AOF logs |
+| Valkey | `/var/lib/valkey/` | RDB snapshots, AOF logs (Redis-compatible wire protocol) |
 | RabbitMQ | `/var/lib/rabbitmq/` | Queues, exchanges, Erlang cookie |
 | App state | `/var/lib/<app>/` | Application-specific state |
 | All logs | `/var/log/<service>/` | Service log files |

@@ -41,7 +41,7 @@ bootc-testboot/
 │   ├── apps/hello/rootfs/        # App config overlay (systemd unit, tmpfiles)
 │   ├── services/nginx/rootfs/    # nginx config overlay
 │   ├── services/mongodb/rootfs/  # MongoDB config overlay
-│   ├── services/redis/rootfs/    # Redis config overlay
+│   ├── services/valkey/rootfs/   # Valkey config overlay
 │   └── services/rabbitmq/rootfs/ # RabbitMQ config overlay (x86_64 only)
 ├── repos/
 │   └── hello/                    # Go HTTP hello world

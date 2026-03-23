@@ -21,9 +21,9 @@ on:
           - fedora-40
           - fedora-41
       platforms:
-        description: 'Platforms to build (comma-separated)'
+        description: 'Platforms to build (comma-separated); amd64 only for now'
         required: true
-        default: 'linux/amd64,linux/arm64'
+        default: 'linux/amd64'
 
 env:
   REGISTRY: ghcr.io
@@ -31,6 +31,11 @@ env:
   BASE_IMAGE: ghcr.io/${{ github.repository }}-base
 
 jobs:
+  # --- Optional future aarch64 (not enabled; CI is linux/amd64 only) ---
+  # To restore arm64: default or workflow_dispatch inputs.platforms may include linux/arm64;
+  # in the matrix loop below, use RUNNER=ubuntu-24.04-arm when ARCH=arm64 else ubuntu-latest.
+  # Align with build-base.yml (base images must exist per arch before bootc build).
+  # ---
   # ---------------------------------------------------------------------------
   # Build matrix computation
   # ---------------------------------------------------------------------------
@@ -48,7 +53,7 @@ jobs:
             PLATFORMS="${{ inputs.platforms }}"
             DISTROS=("${{ inputs.base_distro }}")
           else
-            PLATFORMS="linux/amd64,linux/arm64"
+            PLATFORMS="linux/amd64"
             DISTROS=("centos-stream9" "centos-stream10" "fedora-40" "fedora-41")
           fi
 
@@ -62,11 +67,7 @@ jobs:
           for D in "${DISTROS[@]}"; do
             for PLATFORM in "${PLATFORM_ARRAY[@]}"; do
               ARCH="${PLATFORM#linux/}"
-              if [ "$ARCH" = "arm64" ]; then
-                RUNNER="ubuntu-24.04-arm"
-              else
-                RUNNER="ubuntu-latest"
-              fi
+              RUNNER="ubuntu-latest"
               if [ $first -eq 0 ]; then MATRIX+=","; fi
               first=0
               MATRIX+="{\"distro\":\"$D\",\"platform\":\"$PLATFORM\",\"arch\":\"$ARCH\",\"runner\":\"$RUNNER\"}"
@@ -96,7 +97,7 @@ jobs:
           done
 
   # ---------------------------------------------------------------------------
-  # Build: multi-arch app image
+  # Build app image (platform matrix; default linux/amd64 only)
   # ---------------------------------------------------------------------------
   build:
     name: Build ${{ matrix.distro }} (${{ matrix.arch }})

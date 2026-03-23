@@ -34,6 +34,8 @@ jobs:
             fi
           done
 
+  # --- PR builds are linux/amd64 only (matches main workflows). Optional arm64 would need
+  #     matching --platform and runner (e.g. ubuntu-24.04-arm); not used in this repo today.
   # ---------------------------------------------------------------------------
   # PR check: build + strict lint (no push)
   # ---------------------------------------------------------------------------

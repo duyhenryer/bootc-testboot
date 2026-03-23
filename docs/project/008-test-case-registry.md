@@ -216,7 +216,7 @@ podman run --rm <image> bash -c '
 
   # Check overrides for middleware
   ls /usr/lib/systemd/system/mongod.service.d/override.conf
-  ls /usr/lib/systemd/system/redis.service.d/override.conf
+  ls /usr/lib/systemd/system/valkey.service.d/override.conf
   ls /usr/lib/systemd/system/rabbitmq-server.service.d/override.conf
 '
 ```
@@ -236,7 +236,7 @@ podman run --rm <image> bash -c '
   cat /usr/lib/tmpfiles.d/testboot-common.conf
   cat /usr/lib/tmpfiles.d/nginx.conf
   cat /usr/lib/tmpfiles.d/mongodb.conf
-  cat /usr/lib/tmpfiles.d/redis.conf
+  cat /usr/lib/tmpfiles.d/valkey.conf
   cat /usr/lib/tmpfiles.d/rabbitmq.conf
   cat /usr/lib/sysusers.d/appuser.conf
 '
@@ -250,7 +250,7 @@ podman run --rm <image> bash -c '
 | `testboot-common.conf` | `/var/lib/testboot`, `/var/log/testboot` |
 | `nginx.conf` | `/var/lib/nginx`, `/var/lib/nginx/tmp`, `/var/log/nginx` |
 | `mongodb.conf` | `/var/lib/mongodb`, `/var/log/mongodb` |
-| `redis.conf` | `/var/lib/redis`, `/var/log/redis` |
+| `valkey.conf` | `/var/lib/valkey`, `/var/log/valkey` |
 | `rabbitmq.conf` | `/var/lib/rabbitmq`, `/var/log/rabbitmq` |
 
 - **Expected sysusers.d entries:**
@@ -267,7 +267,7 @@ podman run --rm <image> bash -c '
 ```bash
 podman run --rm <image> bash -c '
   test -f /usr/share/mongodb/mongod.conf && echo "OK: mongod.conf"
-  test -f /usr/share/redis/redis.conf && echo "OK: redis.conf"
+  test -f /usr/share/valkey/valkey.conf && echo "OK: valkey.conf"
   test -f /usr/share/rabbitmq/rabbitmq.conf && echo "OK: rabbitmq.conf"
 '
 ```

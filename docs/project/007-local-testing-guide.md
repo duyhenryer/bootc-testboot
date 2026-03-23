@@ -232,7 +232,7 @@ touch /usr/test-write 2>&1 || echo "Good: /usr is read-only"
 |------------------|--------------------|---------|
 | Go app code | Level 1 | `make test-smoke` |
 | systemd unit file | Level 1 | `make test-smoke` |
-| nginx/redis/rabbitmq config | Level 1 | `make test-smoke` |
+| nginx/valkey/rabbitmq config | Level 1 | `make test-smoke` |
 | New app binary added | Level 2 | `make test-integration` |
 | Containerfile changed | Level 2 | `make test-integration` |
 | cloud-init config | Level 3 | QEMU boot |

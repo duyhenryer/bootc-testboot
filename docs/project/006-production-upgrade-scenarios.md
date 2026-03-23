@@ -24,7 +24,7 @@ We put **every config file** in `/usr/share/<service>/` and create symlinks from
 /etc/nginx/nginx.conf  --->  /usr/share/nginx/nginx.conf  (read-only)
 /etc/nginx/conf.d/     --->  /usr/share/nginx/conf.d/     (read-only)
 /etc/mongod.conf       --->  /usr/share/mongodb/mongod.conf (read-only)
-/etc/redis/redis.conf  --->  /usr/share/redis/redis.conf  (read-only)
+/etc/valkey/valkey.conf  --->  /usr/share/valkey/valkey.conf  (read-only)
 ```
 
 **Why this works:**
@@ -98,7 +98,7 @@ These are all machine-specific and merge safely.
 | Data | Location | Survives upgrade? | Survives rollback? |
 |------|----------|-------------------|-------------------|
 | MongoDB data | `/var/lib/mongodb/` | Yes | Yes |
-| Redis data | `/var/lib/redis/` | Yes | Yes |
+| Valkey data | `/var/lib/valkey/` | Yes | Yes |
 | RabbitMQ data | `/var/lib/rabbitmq/` | Yes | Yes |
 | App state | `/var/lib/hello/` | Yes | Yes |
 | All logs | `/var/log/*/` | Yes | Yes |
@@ -153,16 +153,16 @@ Or document that the customer can manually remove it: `rm -rf /var/lib/old-repor
 
 ### Scenario C: Update a Config
 
-**You changed the Redis `maxmemory` from 256mb to 512mb.**
+**You changed the Valkey `maxmemory` from 256mb to 512mb.**
 
 What you do:
-1. Edit `bootc/services/redis/rootfs/usr/share/redis/redis.conf`
+1. Edit `bootc/services/valkey/rootfs/usr/share/valkey/valkey.conf`
 2. Build and release
 
 What happens on customer upgrade:
-- `/usr/share/redis/redis.conf` is replaced (new maxmemory value)
-- `/etc/redis/redis.conf` symlink still points to it
-- Redis reads the new config on next restart
+- `/usr/share/valkey/valkey.conf` is replaced (new maxmemory value)
+- `/etc/valkey/valkey.conf` symlink still points to it
+- Valkey reads the new config on next restart
 - No merge conflicts, no customer intervention
 
 ### Scenario D: MongoDB Schema Migration
@@ -255,7 +255,7 @@ Rollback is rare in our workflow because we test thoroughly before release. But 
 |------|------------|
 | `/usr` (binaries, configs, units) | Swapped to previous version |
 | `/etc` (symlinks) | Symlinks still point to `/usr/share/` which is now the old version |
-| `/var` (data, logs) | Unchanged -- MongoDB data, Redis data, all logs remain |
+| `/var` (data, logs) | Unchanged -- MongoDB data, Valkey data, all logs remain |
 
 **The one risk:** If v2 ran a database migration (e.g., added a new MongoDB collection), rolling back to v1 means v1's code sees the v2 schema. This is why migrations should be forward-compatible.
 

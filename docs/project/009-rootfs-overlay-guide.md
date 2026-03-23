@@ -65,15 +65,15 @@ Shared utility scripts and system definitions used by all services and apps.
 
 Plus a symlink created in the Containerfile: `/etc/mongod.conf` -> `/usr/share/mongodb/mongod.conf`
 
-### services/redis
+### services/valkey
 
 | Source Path | Runtime Path | Zone | Purpose |
 |-------------|-------------|------|---------|
-| `bootc/services/redis/rootfs/usr/share/redis/redis.conf` | `/usr/share/redis/redis.conf` | Read-only | Immutable Redis config |
-| `bootc/services/redis/rootfs/usr/lib/systemd/system/redis.service.d/override.conf` | `/usr/lib/systemd/system/redis.service.d/override.conf` | Read-only | systemd drop-in override |
-| `bootc/services/redis/rootfs/usr/lib/tmpfiles.d/redis.conf` | `/usr/lib/tmpfiles.d/redis.conf` | Read-only | Creates Redis `/var` dirs at boot |
+| `bootc/services/valkey/rootfs/usr/share/valkey/valkey.conf` | `/usr/share/valkey/valkey.conf` | Read-only | Immutable Valkey config |
+| `bootc/services/valkey/rootfs/usr/lib/systemd/system/valkey.service.d/override.conf` | `/usr/lib/systemd/system/valkey.service.d/override.conf` | Read-only | systemd drop-in override |
+| `bootc/services/valkey/rootfs/usr/lib/tmpfiles.d/valkey.conf` | `/usr/lib/tmpfiles.d/valkey.conf` | Read-only | Creates Valkey `/var` dirs at boot |
 
-Plus a symlink: `/etc/redis/redis.conf` -> `/usr/share/redis/redis.conf`
+Plus a symlink: `/etc/valkey/valkey.conf` -> `/usr/share/valkey/valkey.conf`
 
 ### services/nginx
 
@@ -159,7 +159,7 @@ Also includes `sysusers.d` (user definitions) and `tmpfiles.d` (directory defini
 
 ### services -- Middleware daemons
 
-**Directories:** `bootc/services/mongodb/`, `bootc/services/redis/`, `bootc/services/nginx/`, `bootc/services/rabbitmq/`
+**Directories:** `bootc/services/mongodb/`, `bootc/services/valkey/`, `bootc/services/nginx/`, `bootc/services/rabbitmq/`
 
 Each service provides:
 
