@@ -23,15 +23,20 @@ on:
           - fedora-40
           - fedora-41
       platforms:
-        description: 'Platforms to build (comma-separated)'
+        description: 'Platforms to build (comma-separated); amd64 only for now'
         required: true
-        default: 'linux/amd64,linux/arm64'
+        default: 'linux/amd64'
 
 env:
   REGISTRY: ghcr.io
   BASE_IMAGE: ghcr.io/${{ github.repository }}-base
 
 jobs:
+  # --- Optional future aarch64 (not enabled; CI is linux/amd64 only) ---
+  # To restore arm64: set platforms to include linux/arm64 (e.g. linux/amd64,linux/arm64) on push/dispatch;
+  # in the matrix loop below, use RUNNER=ubuntu-24.04-arm when ARCH=arm64 else ubuntu-latest.
+  # Per-arch tags already use -${{ matrix.arch }} (e.g. ...-latest-amd64).
+  # ---
   matrix:
     name: Set build matrix
     runs-on: ubuntu-latest
@@ -46,7 +51,7 @@ jobs:
             PLATFORMS="${{ inputs.platforms }}"
             DISTRO="${{ inputs.distro }}"
           else
-            PLATFORMS="linux/amd64,linux/arm64"
+            PLATFORMS="linux/amd64"
             DISTRO="all"
           fi
 
@@ -68,11 +73,7 @@ jobs:
           for D in "${DISTROS[@]}"; do
             for PLATFORM in "${PLATFORM_ARRAY[@]}"; do
               ARCH="${PLATFORM#linux/}"
-              if [ "$ARCH" = "arm64" ]; then
-                RUNNER="ubuntu-24.04-arm"
-              else
-                RUNNER="ubuntu-latest"
-              fi
+              RUNNER="ubuntu-latest"
               if [ $first -eq 0 ]; then MATRIX+=","; fi
               first=0
               MATRIX+="{\"distro\":\"$D\",\"platform\":\"$PLATFORM\",\"arch\":\"$ARCH\",\"runner\":\"$RUNNER\"}"

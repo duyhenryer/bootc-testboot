@@ -6,6 +6,8 @@ A deep-dive guide for DevOps teams building bootc-compatible container images. b
 - [bootc: Generic guidance for building images](https://bootc-dev.github.io/bootc/building/guidance.html)
 - [bootc: "bootc compatible" images](https://bootc-dev.github.io/bootc/bootc-images.html)
 
+**This project:** RabbitMQ/Erlang yum mirrors and CentOS Stream 10 notes — [011-rabbitmq-repos-and-cs10.md](011-rabbitmq-repos-and-cs10.md).
+
 ---
 
 ## Core Principle: Same as App Containers

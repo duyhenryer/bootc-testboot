@@ -1,3 +1,8 @@
+# Team RabbitMQ RPM mirrors: https://yum1.rabbitmq.com / yum2.rabbitmq.com (*.rabbitmq.com).
+# Paths follow official EL9 example: .../erlang/el/9/ and .../rabbitmq/el/9/ (see install-rpm).
+# When upstream publishes el/10 trees, revisit baseurls — CentOS Stream 10 currently uses this el/9 repo file for all app bases.
+# Ref: https://www.rabbitmq.com/docs/install-rpm — https://www.rabbitmq.com/blog/2024/08/11/package-repository-updates
+#
 # Zero dependency Erlang RPM (maintained by RabbitMQ team)
 [modern-erlang]
 name=modern-erlang-el9

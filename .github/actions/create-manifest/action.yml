@@ -12,9 +12,9 @@ inputs:
     description: 'Version string (e.g. "1.0.0" or "latest")'
     required: true
   platforms:
-    description: 'Comma-separated platforms (e.g. linux/amd64,linux/arm64)'
+    description: 'Comma-separated platforms (default linux/amd64; pass multiple e.g. linux/amd64,linux/arm64 for a multi-arch manifest when per-arch images exist)'
     required: false
-    default: 'linux/amd64,linux/arm64'
+    default: 'linux/amd64'
   github-token:
     description: 'GitHub token for GHCR login'
     required: true

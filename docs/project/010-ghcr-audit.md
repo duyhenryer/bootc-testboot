@@ -6,6 +6,10 @@ After CI publishes images to GitHub Container Registry (GHCR), verify manifests 
 
 This project’s images are **public**. You do **not** need `podman login` or a token — `skopeo` and `podman pull` work anonymously.
 
+**CI:** images and disk artifacts are **amd64-only** for now (`*-latest-amd64` style tags). Arm64 is deferred — see comments in [`Containerfile`](../../Containerfile) and `.github/workflows/build-*.yml` for how to re-enable.
+
+RabbitMQ registry-side context (mirrors, CS10): [011-rabbitmq-repos-and-cs10.md](011-rabbitmq-repos-and-cs10.md).
+
 ## Private packages (optional note)
 
 If a package is **private**, use `podman login ghcr.io` with a PAT before `podman pull`. Do not commit or share tokens.
@@ -40,7 +44,7 @@ If a package is **private**, use `podman login ghcr.io` with a PAT before `podma
 |----------|---------|---------|
 | `REGISTRY_PREFIX` | `ghcr.io/duyhenryer` | Registry / namespace |
 | `DISTRO` | `centos-stream9` | Image name segment |
-| `ARCH_SUFFIX` | `latest-amd64` | Tag (e.g. `latest-arm64`) |
+| `ARCH_SUFFIX` | `latest-amd64` | Tag suffix (CI publishes **amd64** only; no `latest-arm64` from these workflows) |
 | `VERIFY_SKIP_SKOPEO` | unset | Set `1` to skip skopeo |
 | `VERIFY_SKIP_PULL` | unset | Set `1` to skip pulls and tarball checks |
 

@@ -6,11 +6,11 @@ This directory contains all bootc image layers: shared libraries, middleware ser
 bootc/
 ├── libs/          # Shared utility scripts and common tmpfiles
 │   └── common/
-├── services/      # Middleware daemons (nginx, mongodb, redis, rabbitmq)
+├── services/      # Middleware daemons (nginx, mongodb, valkey, rabbitmq)
 │   ├── mongodb/
 │   ├── nginx/
 │   ├── rabbitmq/
-│   └── redis/
+│   └── valkey/
 └── apps/          # User-facing applications
     └── hello/
 ```
@@ -48,7 +48,7 @@ All files go under `<component>/rootfs/` mirroring their final path in the image
 | Image Path | Purpose | Example |
 |------------|---------|---------|
 | `/usr/libexec/testboot/` | Shared shell scripts | `log.sh`, `gen-password.sh` |
-| `/usr/share/<service>/` | Immutable configs (read-only at runtime) | `mongod.conf`, `redis.conf` |
+| `/usr/share/<service>/` | Immutable configs (read-only at runtime) | `mongod.conf`, `valkey.conf` |
 | `/usr/lib/systemd/system/<unit>.d/override.conf` | systemd drop-in overrides | `mongod.service.d/override.conf` |
 | `/usr/lib/systemd/system/<unit>.service` | Custom systemd units | `hello.service` |
 | `/usr/lib/tmpfiles.d/` | Persistent `/var` directory definitions | `mongodb.conf`, `testboot-common.conf` |
