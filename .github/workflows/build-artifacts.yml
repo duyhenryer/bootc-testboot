@@ -4,10 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       base_distro:
-        description: 'Base distro of the source image'
-        default: 'centos-stream9'
+        description: 'Base distro of the source image (all = centos-stream9, centos-stream10, fedora-40, fedora-41)'
+        default: 'all'
         type: choice
         options:
+          - all
           - centos-stream9
           - centos-stream10
           - fedora-40
@@ -48,25 +49,33 @@ jobs:
       - id: set
         run: |
           PLATFORMS="${{ inputs.platforms }}"
-          DISTRO="${{ inputs.base_distro }}"
+          DISTRO_INPUT="${{ inputs.base_distro }}"
           FORMATS="${{ inputs.formats }}"
           VERSION="${{ inputs.version }}"
 
-          echo "distro=$DISTRO" >> "$GITHUB_OUTPUT"
+          echo "distro=$DISTRO_INPUT" >> "$GITHUB_OUTPUT"
           echo "platforms=$PLATFORMS" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          if [ "$DISTRO_INPUT" = "all" ]; then
+            DISTROS=(centos-stream9 centos-stream10 fedora-40 fedora-41)
+          else
+            DISTROS=("$DISTRO_INPUT")
+          fi
 
           MATRIX='{"include":['
           first=1
           IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
           IFS=',' read -ra FORMAT_ARRAY <<< "$FORMATS"
-          for PLATFORM in "${PLATFORM_ARRAY[@]}"; do
-            ARCH="${PLATFORM#linux/}"
-            RUNNER="ubuntu-latest"
-            for FMT in "${FORMAT_ARRAY[@]}"; do
-              if [ $first -eq 0 ]; then MATRIX+=","; fi
-              first=0
-              MATRIX+="{\"distro\":\"$DISTRO\",\"platform\":\"$PLATFORM\",\"arch\":\"$ARCH\",\"runner\":\"$RUNNER\",\"format\":\"$FMT\"}"
+          for DISTRO in "${DISTROS[@]}"; do
+            for PLATFORM in "${PLATFORM_ARRAY[@]}"; do
+              ARCH="${PLATFORM#linux/}"
+              RUNNER="ubuntu-latest"
+              for FMT in "${FORMAT_ARRAY[@]}"; do
+                if [ $first -eq 0 ]; then MATRIX+=","; fi
+                first=0
+                MATRIX+="{\"distro\":\"$DISTRO\",\"platform\":\"$PLATFORM\",\"arch\":\"$ARCH\",\"runner\":\"$RUNNER\",\"format\":\"$FMT\"}"
+              done
             done
           done
           MATRIX+=']}'
@@ -76,7 +85,7 @@ jobs:
   # Build disk artifacts (qcow2, ami, vmdk, raw, iso)
   # ---------------------------------------------------------------------------
   build-artifacts:
-    name: Artifacts (${{ matrix.format }}) (${{ matrix.arch }})
+    name: Artifacts (${{ matrix.distro }} / ${{ matrix.format }} / ${{ matrix.arch }})
     needs: [matrix]
     runs-on: ${{ matrix.runner }}
     permissions:
