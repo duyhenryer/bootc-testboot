@@ -25,12 +25,14 @@ make build                   # Layer 2: app image (Containerfile)
 ```bash
 # Layer 1: base image
 podman build -f base/centos/stream9/Containerfile \
-    -t ghcr.io/duyhenryer/bootc-testboot-base:centos-stream9-latest .
+    -t ghcr.io/duyhenryer/bootc-testboot/base/centos-stream9:latest .
 
 # Layer 2: app image
 podman build \
+    --build-arg IMAGE_ROOT=ghcr.io/duyhenryer/bootc-testboot \
     --build-arg BASE_DISTRO=centos-stream9 \
-    -t ghcr.io/duyhenryer/bootc-testboot:latest \
+    --build-arg BASE_IMAGE_VERSION=latest \
+    -t ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest \
     -f Containerfile .
 ```
 
@@ -48,31 +50,31 @@ When CI runs `bootc-image-builder`, it produces a disk file (e.g. `disk.raw`, `d
 
 ### Image naming and tags
 
-Pattern: `ghcr.io/duyhenryer/bootc-testboot-{distro}-{format}:{tag}`
+Pattern (path-style on GHCR):
 
-Tags follow this scheme:
+- Base: `ghcr.io/duyhenryer/bootc-testboot/base/<distro>:<tag>`
+- App (bootc): `ghcr.io/duyhenryer/bootc-testboot/<distro>:<tag>`
+- Disk artifact: `ghcr.io/duyhenryer/bootc-testboot/<distro>/<format>:<tag>` (e.g. `qcow2`, `ami`)
 
 | Tag | Meaning |
 |-----|---------|
-| `latest-amd64` | Latest build for x86_64 |
-| `latest` | Manifest over published per-arch tags (currently **linux/amd64** only in CI) |
-| `v3-amd64` | Version 3 for x86_64 |
-| `v3` | Version manifest (currently **amd64** only) |
+| `latest` | Latest build from `main` (merge) |
+| `1.0.1` | Semver from git tag / release workflow |
 
-This repository’s workflows do **not** build or publish `*-arm64` images. A future re-enable would add per-arch tags and list both in the manifest.
+CI builds **linux/amd64** only. To pull explicitly: `podman pull --platform linux/amd64 <image>:latest`.
 
 ### Artifact path reference
 
 The disk file path **inside** the OCI container depends on the format. These paths have been verified against the actual CI output:
 
-| Format | OCI image suffix | Path inside container | Example image |
-|--------|-----------------|----------------------|---------------|
-| AMI | `-ami` | `/image/disk.raw` | `*-centos-stream9-ami:latest-amd64` |
-| QCOW2 | `-qcow2` | `/qcow2/disk.qcow2` | `*-centos-stream9-qcow2:latest-amd64` |
-| Raw (for GCE) | `-raw` | `/image/disk.raw` | `*-centos-stream9-raw:latest-amd64` |
-| VMDK | `-vmdk` | `/vmdk/disk.vmdk` | `*-centos-stream9-vmdk:latest-amd64` |
-| OVA | `-ova` | `/*.ova` | `*-centos-stream9-ova:latest-amd64` |
-| Anaconda ISO | `-anaconda-iso` | `/bootiso/disk.iso` | `*-centos-stream9-anaconda-iso:latest-amd64` |
+| Format | Path segment | Path inside container | Example image |
+|--------|----------------|----------------------|---------------|
+| AMI | `ami` | `/image/disk.raw` | `.../bootc-testboot/centos-stream9/ami:latest` |
+| QCOW2 | `qcow2` | `/qcow2/disk.qcow2` | `.../bootc-testboot/centos-stream9/qcow2:latest` |
+| Raw (for GCE) | `raw` | `/image/disk.raw` | `.../bootc-testboot/centos-stream9/raw:latest` |
+| VMDK | `vmdk` | `/vmdk/disk.vmdk` | `.../bootc-testboot/centos-stream9/vmdk:latest` |
+| OVA | `ova` | `/*.ova` | `.../bootc-testboot/centos-stream9/ova:latest` |
+| Anaconda ISO | `anaconda-iso` | `/bootiso/disk.iso` | `.../bootc-testboot/centos-stream9/anaconda-iso:latest` |
 
 To verify all published images and these paths automatically, run [010-ghcr-audit.md](010-ghcr-audit.md) (`./scripts/verify-ghcr-packages.sh` or `make verify-ghcr`).
 
@@ -82,10 +84,10 @@ This 3-step pattern works for any format:
 
 ```bash
 # 1. Pull the artifact image
-podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-qcow2:latest-amd64
+podman pull ghcr.io/duyhenryer/bootc-testboot/centos-stream9/qcow2:latest
 
 # 2. Create a temporary container (the image has no OS, so we use /bin/true as a dummy command)
-ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-qcow2:latest-amd64 /bin/true)
+ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot/centos-stream9/qcow2:latest /bin/true)
 
 # 3. Copy the disk file out of the container
 podman cp "$ctr":/qcow2/disk.qcow2 ./disk.qcow2
@@ -103,7 +105,7 @@ Change the image name and path to match your format (see the table above).
 To see everything inside an artifact image without extracting:
 
 ```bash
-ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-ami:latest-amd64 /bin/true)
+ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot/centos-stream9/ami:latest /bin/true)
 podman export "$ctr" | tar -t
 podman rm "$ctr"
 ```
@@ -332,7 +334,7 @@ podman images | grep bootc-testboot
 `bootc-image-builder` runs with `sudo` and uses root's container storage, not your user storage. Copy the image across:
 
 ```bash
-podman save ghcr.io/duyhenryer/bootc-testboot:latest | sudo podman load
+podman save ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest | sudo podman load
 ```
 
 **Step 3: Build the raw disk**
@@ -350,7 +352,7 @@ sudo podman run --rm --privileged \
     --type ami --rootfs ext4 \
     --chown $(id -u):$(id -g) \
     --config /config/config.toml \
-    ghcr.io/duyhenryer/bootc-testboot:latest
+    ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest
 ```
 
 Output: `output/ami/image/disk.raw`
@@ -366,9 +368,9 @@ Output: `output/ami/image/disk.raw`
 If CI has already built the AMI artifact, pull and extract it:
 
 ```bash
-podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-ami:latest-amd64
+podman pull ghcr.io/duyhenryer/bootc-testboot/centos-stream9/ami:latest
 
-ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-ami:latest-amd64 /bin/true)
+ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot/centos-stream9/ami:latest /bin/true)
 podman cp "$ctr":/image/disk.raw ./disk.raw
 podman rm "$ctr"
 ```
@@ -553,7 +555,7 @@ sudo podman run \
   --aws-ami-name bootc-testboot-ami \
   --aws-bucket YOUR_BOOTC_IMPORT_BUCKET \
   --aws-region us-east-1 \
-  ghcr.io/duyhenryer/bootc-testboot:latest
+  ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest
 ```
 
 **Credentials via env-file (recommended for CI):**
@@ -575,7 +577,7 @@ sudo podman run \
   --aws-ami-name bootc-testboot-ami \
   --aws-bucket YOUR_BOOTC_IMPORT_BUCKET \
   --aws-region us-east-1 \
-  ghcr.io/duyhenryer/bootc-testboot:latest
+  ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest
 ```
 
 ---
@@ -605,7 +607,7 @@ If you have not built the image yet, follow [Local build prerequisites](#local-b
 **Step 2: Copy to root podman storage**
 
 ```bash
-podman save ghcr.io/duyhenryer/bootc-testboot:latest | sudo podman load
+podman save ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest | sudo podman load
 ```
 
 **Step 3: Build the raw disk and package for GCE**
@@ -621,7 +623,7 @@ sudo podman run --rm --privileged \
     --type raw --rootfs ext4 \
     --chown $(id -u):$(id -g) \
     --config /config/config.toml \
-    ghcr.io/duyhenryer/bootc-testboot:latest
+    ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest
 
 # Package for GCE (the tar.gz must contain exactly "disk.raw")
 cd output/gce/image
@@ -631,9 +633,9 @@ tar -Szcf ../bootc-centos9.tar.gz disk.raw
 ### Option B: Pull from GHCR
 
 ```bash
-podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-raw:latest-amd64
+podman pull ghcr.io/duyhenryer/bootc-testboot/centos-stream9/raw:latest
 
-ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-raw:latest-amd64 /bin/true)
+ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot/centos-stream9/raw:latest /bin/true)
 podman cp "$ctr":/image/disk.raw ./disk.raw
 podman rm "$ctr"
 
@@ -771,7 +773,7 @@ If you have not built the image yet, follow [Local build prerequisites](#local-b
 **Step 2: Copy to root podman storage**
 
 ```bash
-podman save ghcr.io/duyhenryer/bootc-testboot:latest | sudo podman load
+podman save ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest | sudo podman load
 ```
 
 **Step 3: Build the VMDK**
@@ -789,7 +791,7 @@ sudo podman run --rm --privileged \
     --type vmdk --rootfs ext4 \
     --chown $(id -u):$(id -g) \
     --config /config/config.toml \
-    ghcr.io/duyhenryer/bootc-testboot:latest
+    ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest
 ```
 
 Output: `output/vmdk/vmdk/disk.vmdk`
@@ -842,15 +844,15 @@ If CI has already built the artifacts, pull and extract:
 ```bash
 # Option 1: Pull the ready-made OVA
 mkdir -p output/ova
-podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-ova:latest-amd64
-ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-ova:latest-amd64 /bin/true)
+podman pull ghcr.io/duyhenryer/bootc-testboot/centos-stream9/ova:latest
+ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot/centos-stream9/ova:latest /bin/true)
 podman export "$ctr" | tar -xf - -C ./output/ova/
 podman rm "$ctr"
 # The .ova file is inside output/ova/
 
 # Option 2: Pull just the VMDK (if you want to customize the OVF or skip OVA)
-podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-vmdk:latest-amd64
-ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-vmdk:latest-amd64 /bin/true)
+podman pull ghcr.io/duyhenryer/bootc-testboot/centos-stream9/vmdk:latest
+ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot/centos-stream9/vmdk:latest /bin/true)
 podman cp "$ctr":/vmdk/disk.vmdk ./disk.vmdk
 podman rm "$ctr"
 ```
@@ -942,7 +944,7 @@ For production VMware deployments, consider adding `open-vm-tools` and `cloud-in
 This project does **not** include them by default (they are unnecessary for AWS/GCE/bare metal). If your target is exclusively VMware, add them in a derived layer:
 
 ```dockerfile
-FROM ghcr.io/duyhenryer/bootc-testboot:latest
+FROM ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest
 
 RUN dnf -y install open-vm-tools cloud-init && \
     ln -s ../cloud-init.target /usr/lib/systemd/system/default.target.wants/cloud-init.target && \
@@ -961,8 +963,8 @@ Then build your VMDK/OVA from this derived image instead of the base.
 ### Pull from GHCR
 
 ```bash
-podman pull ghcr.io/duyhenryer/bootc-testboot-centos-stream9-anaconda-iso:latest-amd64
-ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot-centos-stream9-anaconda-iso:latest-amd64 /bin/true)
+podman pull ghcr.io/duyhenryer/bootc-testboot/centos-stream9/anaconda-iso:latest
+ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot/centos-stream9/anaconda-iso:latest /bin/true)
 podman cp "$ctr":/bootiso/disk.iso ./bootc-installer.iso
 podman rm "$ctr"
 ```

@@ -1,5 +1,5 @@
 name: Create multi-platform manifest
-description: Create and push multi-arch podman manifests to GHCR for one or more distros
+description: Create and push multi-arch podman manifests to GHCR (optional; current workflows push single-arch images directly without a separate manifest job)
 
 inputs:
   image:

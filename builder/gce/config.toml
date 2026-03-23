@@ -11,7 +11,7 @@
 #     --type raw --rootfs ext4 \
 #     --chown $(id -u):$(id -g) \
 #     --config /config/config.toml \
-#     ghcr.io/duyhenryer/bootc-testboot:latest
+#     ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest
 #
 # After build, package for GCE:
 #   cd output/image && tar -Szcf ../bootc-centos9.tar.gz disk.raw

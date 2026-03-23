@@ -84,13 +84,13 @@ output/bin/hello: ELF 64-bit LSB executable, x86-64, version 1 (SYSV),
 
 - **Command:** `make base BASE_DISTRO=centos-stream9`
 - **What it tests:** Base OS image builds from `base/centos/stream9/Containerfile`
-- **Expected:** Image tagged as `<registry>/bootc-testboot-base:centos-stream9-latest`
+- **Expected:** Image tagged as `<registry>/bootc-testboot/centos-stream9:latest` (path-style; parity with CI)
 
 ### TC-05: Build App Image (Layer 2)
 
 - **Command:** `make build BASE_DISTRO=centos-stream9`
 - **What it tests:** Application image builds on top of base, copies binaries, configs, and enables services
-- **Expected:** Image tagged as `<registry>/bootc-testboot:latest`
+- **Expected:** Image tagged as `<registry>/bootc-testboot/<distro>:latest`
 
 ---
 

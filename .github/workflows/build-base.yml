@@ -29,13 +29,12 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  BASE_IMAGE: ghcr.io/${{ github.repository }}-base
+  IMAGE_ROOT: ghcr.io/${{ github.repository }}
 
 jobs:
   # --- Optional future aarch64 (not enabled; CI is linux/amd64 only) ---
-  # To restore arm64: set platforms to include linux/arm64 (e.g. linux/amd64,linux/arm64) on push/dispatch;
-  # in the matrix loop below, use RUNNER=ubuntu-24.04-arm when ARCH=arm64 else ubuntu-latest.
-  # Per-arch tags already use -${{ matrix.arch }} (e.g. ...-latest-amd64).
+  # To restore arm64: set platforms to include linux/arm64; use RUNNER=ubuntu-24.04-arm when ARCH=arm64.
+  # Tags are path-style: IMAGE_ROOT/base/<distro>:latest (no -arch suffix; single-platform image).
   # ---
   matrix:
     name: Set build matrix
@@ -80,7 +79,6 @@ jobs:
             done
           done
           MATRIX+=']}'
-
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   build-base:
@@ -118,42 +116,25 @@ jobs:
       - name: Build base image
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          TAGS="-t ${{ env.BASE_IMAGE }}:${{ matrix.distro }}-latest-${{ matrix.arch }}"
+          REF="${{ env.IMAGE_ROOT }}/base/${{ matrix.distro }}"
+          TAGS="-t ${REF}:latest"
           if [ "$VERSION" != "latest" ]; then
-            TAGS="$TAGS -t ${{ env.BASE_IMAGE }}:${{ matrix.distro }}-${VERSION}-${{ matrix.arch }}"
+            TAGS="$TAGS -t ${REF}:${VERSION}"
           fi
           podman build --platform ${{ matrix.platform }} $TAGS \
             -f base/${{ steps.path.outputs.path }}/Containerfile .
 
       - name: Strict lint
-        run: podman run --rm ${{ env.BASE_IMAGE }}:${{ matrix.distro }}-latest-${{ matrix.arch }} bootc container lint --fatal-warnings || exit 1
+        run: podman run --rm ${{ env.IMAGE_ROOT }}/base/${{ matrix.distro }}:latest bootc container lint --fatal-warnings || exit 1
 
       - name: Login to GHCR
         run: echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Push arch-specific base image
+      - name: Push base image
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          podman push ${{ env.BASE_IMAGE }}:${{ matrix.distro }}-latest-${{ matrix.arch }}
+          REF="${{ env.IMAGE_ROOT }}/base/${{ matrix.distro }}"
+          podman push "${REF}:latest"
           if [ "$VERSION" != "latest" ]; then
-            podman push ${{ env.BASE_IMAGE }}:${{ matrix.distro }}-${VERSION}-${{ matrix.arch }}
+            podman push "${REF}:${VERSION}"
           fi
-
-  create-manifest:
-    name: Create multi-platform manifests
-    needs: [matrix, build-base]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: ./.github/actions/create-manifest
-        with:
-          image: ${{ env.BASE_IMAGE }}
-          distros: ${{ needs.matrix.outputs.distros }}
-          version: ${{ needs.build-base.outputs.version }}
-          platforms: ${{ needs.matrix.outputs.platforms }}
-          github-token: ${{ github.token }}
-          github-actor: ${{ github.actor }}

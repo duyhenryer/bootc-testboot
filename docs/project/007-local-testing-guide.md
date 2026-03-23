@@ -45,7 +45,7 @@ make test-smoke
 **What you see (success):**
 
 ```
-==> Smoke testing ghcr.io/duyhenryer/bootc-testboot:latest
+==> Smoke testing ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest
 --- Checking binaries ---
   OK: /usr/bin/hello
 --- Checking systemd units ---
@@ -102,7 +102,7 @@ make test-integration
 **What you see (success):**
 
 ```
-==> Integration testing ghcr.io/duyhenryer/bootc-testboot:latest (read-only /usr)
+==> Integration testing ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest (read-only /usr)
 --- Verifying tmpfiles.d creates /var dirs ---
   OK: /var/log/nginx
   OK: /var/lib/testboot
@@ -166,7 +166,7 @@ podman rm $CID
 Or build locally with `bootc-image-builder`:
 
 ```bash
-sudo podman pull ghcr.io/duyhenryer/bootc-testboot:latest
+sudo podman pull ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest
 
 sudo podman run --rm --privileged \
   --security-opt label=type:unconfined_t \
@@ -178,7 +178,7 @@ sudo podman run --rm --privileged \
   --rootfs ext4 \
   --chown $(id -u):$(id -g) \
   --config /builder/qcow2/config.toml \
-  ghcr.io/duyhenryer/bootc-testboot:latest
+  ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest
 ```
 
 **Step 2: Boot the VM**
