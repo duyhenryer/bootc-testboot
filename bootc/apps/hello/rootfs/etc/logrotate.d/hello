@@ -1,0 +1,9 @@
+# hello.service: app + healthcheck logs (DynamicUser=hello; fd kept open — use copytruncate)
+/var/log/bootc-testboot/hello/*.log {
+    weekly
+    rotate 4
+    copytruncate
+    missingok
+    notifempty
+    su hello hello
+}

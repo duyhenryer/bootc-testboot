@@ -216,7 +216,7 @@ ls -la /etc/nginx/nginx.conf    # should be symlink -> /usr/share/nginx/nginx.co
 cat /usr/share/nginx/nginx.conf # should be your custom config
 
 # Check data directories exist
-ls -la /var/lib/hello/ /var/log/nginx/
+ls -la /var/lib/bootc-testboot/hello/ /var/log/nginx/
 
 # Verify /usr is read-only
 touch /usr/test-write 2>&1 || echo "Good: /usr is read-only"
@@ -269,6 +269,63 @@ You can add smoke tests to PR checks by adding `make test-smoke` to the `pr-chec
 ---
 
 ## Troubleshooting
+
+### Post-deploy audit (EC2 / VM)
+
+Use this after SSH (or serial console) to a booted instance. It complements [010-ghcr-audit.md](010-ghcr-audit.md) (registry-side checks).
+
+**Failed units and logs**
+
+```bash
+systemctl --failed --no-pager
+journalctl -u mongodb-init.service -b --no-pager -l
+```
+
+**MongoDB init**
+
+- `mongodb-init.service` runs `mongosh` (package **`mongodb-mongosh`**). If the journal shows `mongosh: command not found`, rebuild the app image from a current `Containerfile` and redeploy.
+- Init creates `/var/lib/mongodb/.rs-initialized` when finished. If `.rs-initialized` is missing and `mongosh` works, run `sudo systemctl start mongodb-init.service` once.
+
+**Symlinks (`/etc` → `/usr/share`)**
+
+```bash
+sudo readlink -f /etc/mongod.conf /etc/nginx/nginx.conf /etc/valkey/valkey.conf /etc/rabbitmq/rabbitmq.conf
+```
+
+`/etc/valkey` is root-only; use `sudo` when listing.
+
+**Stack health**
+
+```bash
+curl -sfS http://127.0.0.1:8080/health
+curl -sfS http://127.0.0.1/health
+valkey-cli -h 127.0.0.1 ping
+sudo rabbitmq-diagnostics ping
+```
+
+**`hello` file logs (`hello.service`)**
+
+`hello` uses `DynamicUser=yes`, `StateDirectory=bootc-testboot/hello`, and `LogsDirectory=bootc-testboot/hello`. Under `/var/log/`, the directory may appear as a symlink into `/var/log/private/...` (expected).
+
+**Environment (structured logging via `log/slog`):** `LOG_FILE` (default in unit: `/var/log/bootc-testboot/hello/hello.log`), optional `LOG_LEVEL` (`debug`|`info`|`warn`|`error`, default `info`), `LOG_FORMAT` (`text`|`json`, default `text`). Optional `LISTEN_ADDR` for bind address (default `:8080`). The app writes the same formatted lines to **stdout** (journald) and to **`LOG_FILE`** when set—use `journalctl` for live ops; use the file for tail/grep on disk.
+
+- **`/var/log/bootc-testboot/hello/hello.log`** — application log (duplicate of journal for the same lines when `LOG_FILE` is set).
+- **`/var/log/bootc-testboot/hello/healthcheck.log`** — `ExecStartPost` / `healthcheck.sh` when `LOG_FILE` is set (also on stderr / journal).
+
+**Rotation:** `logrotate` ships [`/etc/logrotate.d/hello`](../../bootc/apps/hello/rootfs/etc/logrotate.d/hello) for `/var/log/bootc-testboot/hello/*.log` (`copytruncate`, `su hello hello`). Do not run a second rotator on the same paths.
+
+```bash
+journalctl -u hello.service -b --no-pager
+ls -la /var/log/bootc-testboot/hello
+readlink /var/log/bootc-testboot/hello 2>/dev/null || true
+ls -la /var/log/private/ 2>/dev/null
+sudo tail -n 50 /var/log/bootc-testboot/hello/hello.log
+sudo tail -n 50 /var/log/bootc-testboot/hello/healthcheck.log
+```
+
+**`arptables` / `rdisc`**
+
+On cloud VMs these are often unnecessary. The image ships **`iptables`**, **`arptables`**, **`iputils`**, a minimal `/etc/sysconfig/arptables`, and leaves **`arptables.service`** and **`rdisc.service` disabled** so they do not show as failed by default. If you still see old failures from a previous image, you can clear state with `sudo systemctl reset-failed` after upgrading. To opt in: `sudo systemctl enable --now arptables.service` (only if you need ARP filtering) or `rdisc` only on networks where ICMP router discovery is appropriate.
 
 ### `podman run` hangs or exits immediately
 

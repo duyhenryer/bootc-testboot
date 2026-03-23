@@ -58,6 +58,8 @@ Change `centos/stream9` to your target distro (`centos/stream10`, `fedora/40`, `
 
 After building, verify with `podman images | grep bootc-testboot`. Then proceed to the deployment section for your target (AWS, GCE, VMware).
 
+After a VM is up (e.g. EC2), use [007-local-testing-guide.md](007-local-testing-guide.md) — **Post-deploy audit** — to check `systemd` failed units, app health, MongoDB init, symlinks, and **`hello` log files** (`hello.log`, `healthcheck.log` under `/var/log/bootc-testboot/hello/`).
+
 ---
 
 ## 1. How Artifacts Work
