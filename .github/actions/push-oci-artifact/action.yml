@@ -6,13 +6,10 @@ inputs:
     description: 'Directory to package (e.g. output, output/ova)'
     required: true
   image:
-    description: 'Full artifact image name (e.g. ghcr.io/org/repo-centos-stream9-vmdk)'
+    description: 'Full artifact image name (e.g. ghcr.io/org/repo/fedora-41/qcow2)'
     required: true
   version:
     description: 'Version string (e.g. "1.0.0" or "latest")'
-    required: true
-  arch:
-    description: 'Architecture suffix from the build matrix (e.g. amd64)'
     required: true
   github-token:
     description: 'GitHub token for GHCR login'
@@ -31,17 +28,16 @@ runs:
         SOURCE_DIR="${{ inputs.source-dir }}"
         IMAGE="${{ inputs.image }}"
         VERSION="${{ inputs.version }}"
-        ARCH="${{ inputs.arch }}"
 
         cat > "${SOURCE_DIR}/Containerfile.scratch" <<'SCRATCH'
         FROM scratch
         COPY . /
         SCRATCH
 
-        LATEST_TAG="${IMAGE}:latest-${ARCH}"
+        LATEST_TAG="${IMAGE}:latest"
         TAGS="--tag ${LATEST_TAG}"
         if [ "$VERSION" != "latest" ]; then
-          TAGS="${TAGS} --tag ${IMAGE}:${VERSION}-${ARCH}"
+          TAGS="${TAGS} --tag ${IMAGE}:${VERSION}"
         fi
 
         cd "${SOURCE_DIR}"
@@ -50,5 +46,5 @@ runs:
         echo "${{ inputs.github-token }}" | sudo buildah login ghcr.io -u "${{ inputs.github-actor }}" --password-stdin
         sudo buildah push "${LATEST_TAG}"
         if [ "$VERSION" != "latest" ]; then
-          sudo buildah push "${IMAGE}:${VERSION}-${ARCH}"
+          sudo buildah push "${IMAGE}:${VERSION}"
         fi

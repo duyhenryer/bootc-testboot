@@ -12,7 +12,7 @@
 # Env:
 #   REGISTRY_PREFIX   default ghcr.io/duyhenryer
 #   DISTRO            default centos-stream9
-#   ARCH_SUFFIX       default latest-amd64
+#   IMAGE_TAG         default latest (path-style tags; no -arch suffix)
 #   VERIFY_SKIP_PULL  set 1 to skip podman pull + tarball checks
 #   VERIFY_SKIP_SKOPEO set 1 to skip skopeo
 
@@ -20,7 +20,8 @@ set -uo pipefail
 
 REGISTRY_PREFIX="${REGISTRY_PREFIX:-ghcr.io/duyhenryer}"
 DISTRO="${DISTRO:-centos-stream9}"
-ARCH_SUFFIX="${ARCH_SUFFIX:-latest-amd64}"
+IMAGE_TAG="${IMAGE_TAG:-latest}"
+IMAGE_ROOT="${REGISTRY_PREFIX}/bootc-testboot"
 
 REPORT_FAIL=0
 REPORT_OK=0
@@ -54,10 +55,10 @@ skopeo_inspect_ref() {
 }
 
 section "1. skopeo inspect (remote metadata, no layer download)"
-BASE_IMG="${REGISTRY_PREFIX}/bootc-testboot-base:${DISTRO}-${ARCH_SUFFIX}"
-APP_IMG="${REGISTRY_PREFIX}/bootc-testboot:${DISTRO}-${ARCH_SUFFIX}"
+BASE_IMG="${IMAGE_ROOT}/base/${DISTRO}:${IMAGE_TAG}"
+APP_IMG="${IMAGE_ROOT}/${DISTRO}:${IMAGE_TAG}"
 for suffix in ami qcow2 raw vmdk ova anaconda-iso; do
-  skopeo_inspect_ref "${REGISTRY_PREFIX}/bootc-testboot-${DISTRO}-${suffix}:${ARCH_SUFFIX}" "artifact-${suffix}"
+  skopeo_inspect_ref "${IMAGE_ROOT}/${DISTRO}/${suffix}:${IMAGE_TAG}" "artifact-${suffix}"
 done
 skopeo_inspect_ref "$BASE_IMG" "base"
 skopeo_inspect_ref "$APP_IMG" "app"
@@ -117,27 +118,27 @@ if [[ "${VERIFY_SKIP_PULL:-0}" == "1" ]]; then
   echo "VERIFY_SKIP_PULL=1 — skipping podman pull and tarball checks."
 else
   verify_artifact_paths "AMI artifact" \
-    "${REGISTRY_PREFIX}/bootc-testboot-${DISTRO}-ami:${ARCH_SUFFIX}" \
+    "${IMAGE_ROOT}/${DISTRO}/ami:${IMAGE_TAG}" \
     '(^|\./)image/disk\.raw$'
 
   verify_artifact_paths "QCOW2 artifact" \
-    "${REGISTRY_PREFIX}/bootc-testboot-${DISTRO}-qcow2:${ARCH_SUFFIX}" \
+    "${IMAGE_ROOT}/${DISTRO}/qcow2:${IMAGE_TAG}" \
     '(^|\./)qcow2/disk\.qcow2$'
 
   verify_artifact_paths "Raw artifact" \
-    "${REGISTRY_PREFIX}/bootc-testboot-${DISTRO}-raw:${ARCH_SUFFIX}" \
+    "${IMAGE_ROOT}/${DISTRO}/raw:${IMAGE_TAG}" \
     '(^|\./)image/disk\.raw$'
 
   verify_artifact_paths "VMDK artifact" \
-    "${REGISTRY_PREFIX}/bootc-testboot-${DISTRO}-vmdk:${ARCH_SUFFIX}" \
+    "${IMAGE_ROOT}/${DISTRO}/vmdk:${IMAGE_TAG}" \
     '(^|\./)vmdk/disk\.vmdk$'
 
   verify_artifact_paths "OVA artifact" \
-    "${REGISTRY_PREFIX}/bootc-testboot-${DISTRO}-ova:${ARCH_SUFFIX}" \
+    "${IMAGE_ROOT}/${DISTRO}/ova:${IMAGE_TAG}" \
     '\.ova$'
 
   verify_artifact_paths "Anaconda ISO artifact" \
-    "${REGISTRY_PREFIX}/bootc-testboot-${DISTRO}-anaconda-iso:${ARCH_SUFFIX}" \
+    "${IMAGE_ROOT}/${DISTRO}/anaconda-iso:${IMAGE_TAG}" \
     '(^|\./)bootiso/disk\.iso$'
 
   verify_bootc_image "Base image" "$BASE_IMG"

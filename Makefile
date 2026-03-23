@@ -2,12 +2,14 @@
 
 # ---------------------------------------------------------------------------
 # Variables (override via env or command line)
+# Path-style images (parity with CI): $(IMAGE_ROOT)/base/$(BASE_DISTRO):tag and $(IMAGE_ROOT)/$(BASE_DISTRO):tag
 # ---------------------------------------------------------------------------
 REGISTRY   ?= ghcr.io/duyhenryer
-IMAGE      ?= $(REGISTRY)/bootc-testboot
-BASE_IMAGE ?= $(REGISTRY)/bootc-testboot-base
+IMAGE_ROOT ?= $(REGISTRY)/bootc-testboot
+BASE_IMAGE_REF = $(IMAGE_ROOT)/base/$(BASE_DISTRO)
+APP_IMAGE_REF = $(IMAGE_ROOT)/$(BASE_DISTRO)
 VERSION    ?= latest
-BASE_IMAGE_VERSION ?= latest
+BASE_IMAGE_VERSION ?= $(VERSION)
 GIT_SHA    ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 PODMAN     ?= podman
 
@@ -32,8 +34,7 @@ base: ## Build base image (BASE_DISTRO=centos-stream9|fedora-41|...)
 		exit 1; \
 	fi
 	$(PODMAN) build --isolation chroot -f $(BASE_FILE) \
-		-t $(BASE_IMAGE):$(BASE_DISTRO)-$(VERSION) \
-		-t $(BASE_IMAGE):$(BASE_DISTRO)-latest .
+		-t $(BASE_IMAGE_REF):$(VERSION) .
 
 # ---------------------------------------------------------------------------
 # Apps (build Go binaries to output/bin/)
@@ -65,18 +66,17 @@ test: ## Run Go tests for all apps
 
 build: apps ## Build application image (uses base, BASE_DISTRO=centos-stream9|...)
 	$(PODMAN) build --isolation chroot \
-		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
+		--build-arg IMAGE_ROOT=$(IMAGE_ROOT) \
 		--build-arg BASE_DISTRO=$(BASE_DISTRO) \
 		--build-arg BASE_IMAGE_VERSION=$(BASE_IMAGE_VERSION) \
 		--build-arg GIT_SHA=$(GIT_SHA) \
-		-t $(IMAGE):$(BASE_DISTRO)-$(VERSION) \
-		-t $(IMAGE):latest .
+		-t $(APP_IMAGE_REF):$(VERSION) .
 
 lint: ## Run bootc container lint on the built image
-	$(PODMAN) run --rm $(IMAGE):latest bootc container lint
+	$(PODMAN) run --rm $(APP_IMAGE_REF):latest bootc container lint
 
 lint-strict: ## Run bootc container lint --fatal-warnings (used in CI)
-	$(PODMAN) run --rm $(IMAGE):latest bootc container lint --fatal-warnings || exit 1
+	$(PODMAN) run --rm $(APP_IMAGE_REF):latest bootc container lint --fatal-warnings || exit 1
 
 # ---------------------------------------------------------------------------
 # Local Testing (no cloud deploy needed)
@@ -86,8 +86,8 @@ EXPECTED_BINS ?= hello
 EXPECTED_SVCS ?= hello nginx
 
 test-smoke: build ## Smoke test: verify image contents (binaries, units, configs, lint)
-	@echo "==> Smoke testing $(IMAGE):latest"
-	@$(PODMAN) run --rm $(IMAGE):latest bash -c '\
+	@echo "==> Smoke testing $(APP_IMAGE_REF):latest"
+	@$(PODMAN) run --rm $(APP_IMAGE_REF):latest bash -c '\
 		FAIL=0; \
 		echo "--- Checking binaries ---"; \
 		for bin in $(EXPECTED_BINS); do \
@@ -111,13 +111,13 @@ test-smoke: build ## Smoke test: verify image contents (binaries, units, configs
 		else echo "SMOKE TESTS FAILED"; exit 1; fi'
 
 test-integration: build ## Integration test: run app in read-only mode (simulates production)
-	@echo "==> Integration testing $(IMAGE):latest (read-only /usr)"
+	@echo "==> Integration testing $(APP_IMAGE_REF):latest (read-only /usr)"
 	@$(PODMAN) run --rm \
 		--read-only \
 		--tmpfs /var:rw,nosuid,nodev \
 		--tmpfs /run:rw,nosuid,nodev \
 		--tmpfs /tmp:rw,nosuid,nodev \
-		$(IMAGE):latest bash -c '\
+		$(APP_IMAGE_REF):latest bash -c '\
 		echo "--- Verifying tmpfiles.d creates /var dirs ---"; \
 		systemd-tmpfiles --create 2>/dev/null; \
 		for d in /var/log/nginx /var/lib/testboot; do \
@@ -142,12 +142,12 @@ audit: apps ## Build + strict-lint ALL base images and app image locally
 	@for d in $(ALL_DISTROS); do \
 		echo "==> [audit] base $$d"; \
 		$(MAKE) base BASE_DISTRO=$$d || exit 1; \
-		$(PODMAN) run --rm $(BASE_IMAGE):$$d-latest \
+		$(PODMAN) run --rm $(IMAGE_ROOT)/base/$$d:latest \
 			bootc container lint --fatal-warnings || exit 1; \
 	done
 	@echo "==> [audit] app $(BASE_DISTRO)"
 	@$(MAKE) build
-	@$(PODMAN) run --rm $(IMAGE):latest \
+	@$(PODMAN) run --rm $(APP_IMAGE_REF):latest \
 		bootc container lint --fatal-warnings
 	@echo "=== ALL AUDIT CHECKS PASSED ==="
 
@@ -156,7 +156,7 @@ verify-ghcr: ## Pull + verify all GHCR packages (scripts/verify-ghcr-packages.sh
 
 clean: ## Clean build artifacts
 	rm -rf output/
-	$(PODMAN) rmi -f $(IMAGE):latest 2>/dev/null || true
+	$(PODMAN) rmi -f $(APP_IMAGE_REF):latest 2>/dev/null || true
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \

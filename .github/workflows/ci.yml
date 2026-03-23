@@ -10,8 +10,7 @@ on:
       - "bootc/**"
 
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
-  BASE_IMAGE: ghcr.io/${{ github.repository }}-base
+  IMAGE_ROOT: ghcr.io/${{ github.repository }}
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -60,14 +59,17 @@ jobs:
         run: |
           podman build --platform linux/amd64 \
             -f base/centos/stream9/Containerfile \
-            -t ${{ env.BASE_IMAGE }}:centos-stream9-latest .
+            -t ${{ env.IMAGE_ROOT }}/base/centos-stream9:latest .
 
       - name: Build image (amd64 only)
         run: |
           podman build --platform linux/amd64 \
+            --build-arg IMAGE_ROOT=${{ env.IMAGE_ROOT }} \
             --build-arg BASE_DISTRO=centos-stream9 \
-            -t ${{ env.IMAGE }}:pr-check \
+            --build-arg BASE_IMAGE_VERSION=latest \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            -t ${{ env.IMAGE_ROOT }}/centos-stream9:pr-check \
             -f Containerfile .
 
       - name: Strict lint
-        run: podman run --rm ${{ env.IMAGE }}:pr-check bootc container lint --fatal-warnings || exit 1
+        run: podman run --rm ${{ env.IMAGE_ROOT }}/centos-stream9:pr-check bootc container lint --fatal-warnings || exit 1

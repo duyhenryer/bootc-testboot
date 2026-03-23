@@ -27,13 +27,11 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE: ghcr.io/${{ github.repository }}
+  IMAGE_ROOT: ghcr.io/${{ github.repository }}
 
 jobs:
   # --- Optional future aarch64 (not enabled; CI is linux/amd64 only) ---
-  # To restore arm64: set inputs.platforms to include linux/arm64; in the matrix loop below,
-  # use RUNNER=ubuntu-24.04-arm when ARCH=arm64 else ubuntu-latest. Artifact manifests combine
-  # formats x platforms like today.
+  # Artifact images: IMAGE_ROOT/<distro>/<format>:<tag> (no -arch in tag).
   # ---
   # ---------------------------------------------------------------------------
   # Build matrix computation
@@ -97,10 +95,11 @@ jobs:
       - name: Pull target app image into system storage
         run: |
           VERSION="${{ needs.matrix.outputs.version }}"
+          REF="${{ env.IMAGE_ROOT }}/${{ matrix.distro }}"
           if [ "$VERSION" = "latest" ]; then
-            TARGET_IMAGE="${{ env.IMAGE }}:${{ matrix.distro }}-latest-${{ matrix.arch }}"
+            TARGET_IMAGE="${REF}:latest"
           else
-            TARGET_IMAGE="${{ env.IMAGE }}:${{ matrix.distro }}-${VERSION}-${{ matrix.arch }}"
+            TARGET_IMAGE="${REF}:${VERSION}"
           fi
           echo "Pulling $TARGET_IMAGE ..."
           sudo podman pull "$TARGET_IMAGE"
@@ -109,10 +108,11 @@ jobs:
         run: |
           mkdir -p output
           VERSION="${{ needs.matrix.outputs.version }}"
+          REF="${{ env.IMAGE_ROOT }}/${{ matrix.distro }}"
           if [ "$VERSION" = "latest" ]; then
-            TARGET_IMAGE="${{ env.IMAGE }}:${{ matrix.distro }}-latest-${{ matrix.arch }}"
+            TARGET_IMAGE="${REF}:latest"
           else
-            TARGET_IMAGE="${{ env.IMAGE }}:${{ matrix.distro }}-${VERSION}-${{ matrix.arch }}"
+            TARGET_IMAGE="${REF}:${VERSION}"
           fi
 
           sudo podman run \
@@ -167,9 +167,8 @@ jobs:
       - uses: ./.github/actions/push-oci-artifact
         with:
           source-dir: output
-          image: ${{ env.IMAGE }}-${{ matrix.distro }}-${{ matrix.format }}
+          image: ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}/${{ matrix.format }}
           version: ${{ needs.matrix.outputs.version }}
-          arch: ${{ matrix.arch }}
           github-token: ${{ github.token }}
           github-actor: ${{ github.actor }}
 
@@ -177,66 +176,7 @@ jobs:
         if: matrix.format == 'vmdk'
         with:
           source-dir: output/ova
-          image: ${{ env.IMAGE }}-${{ matrix.distro }}-ova
+          image: ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}/ova
           version: ${{ needs.matrix.outputs.version }}
-          arch: ${{ matrix.arch }}
           github-token: ${{ github.token }}
           github-actor: ${{ github.actor }}
-
-  # ---------------------------------------------------------------------------
-  # Create multi-platform artifact manifests
-  # ---------------------------------------------------------------------------
-  create-artifact-manifest:
-    name: Create artifact manifests
-    needs: [matrix, build-artifacts]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Create and push artifact manifests
-        run: |
-          set -euo pipefail
-          DISTRO="${{ needs.matrix.outputs.distro }}"
-          VERSION="${{ needs.matrix.outputs.version }}"
-          PLATFORMS="${{ needs.matrix.outputs.platforms }}"
-          FORMATS="${{ inputs.formats }}"
-
-          IFS=',' read -ra FORMAT_ARRAY <<< "$FORMATS"
-          for FMT in "${FORMAT_ARRAY[@]}"; do
-            if [ "$FMT" = "vmdk" ]; then
-              FORMAT_ARRAY+=("ova")
-              break
-            fi
-          done
-
-          IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
-          ARCHS=()
-          for PLATFORM in "${PLATFORM_ARRAY[@]}"; do
-            ARCHS+=("${PLATFORM#linux/}")
-          done
-
-          MANIFEST_TAGS=("latest")
-          if [ "$VERSION" != "latest" ]; then
-            MANIFEST_TAGS+=("$VERSION")
-          fi
-
-          echo "${{ github.token }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
-
-          for FMT in "${FORMAT_ARRAY[@]}"; do
-            ARTIFACT_IMAGE="${{ env.IMAGE }}-${DISTRO}-${FMT}"
-
-            for TAG in "${MANIFEST_TAGS[@]}"; do
-              echo "==> Creating manifest ${ARTIFACT_IMAGE}:${TAG}"
-
-              podman manifest create "${ARTIFACT_IMAGE}:${TAG}"
-              for ARCH in "${ARCHS[@]}"; do
-                podman manifest add "${ARTIFACT_IMAGE}:${TAG}" "docker://${ARTIFACT_IMAGE}:${TAG}-${ARCH}"
-              done
-
-              podman manifest push "${ARTIFACT_IMAGE}:${TAG}" "docker://${ARTIFACT_IMAGE}:${TAG}"
-              podman manifest rm "${ARTIFACT_IMAGE}:${TAG}" || true
-            done
-          done

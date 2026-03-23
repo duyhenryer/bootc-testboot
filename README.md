@@ -110,13 +110,13 @@ The CI/CD pipeline is designed around a **4-Layer Artifact Distribution Registry
 graph TD
     subgraph L1["Layer 1: Base Build (build-base.yml)"]
         A[Push to main<br>Modify base/*] --> B(Build base image)
-        B --> C[Push: ghcr.io/...:base-fedora-41]
-        B --> D[Push: ghcr.io/...:base-centos-stream9]
+        B --> C[Push: ghcr.io/.../bootc-testboot/base/fedora-41:latest]
+        B --> D[Push: ghcr.io/.../bootc-testboot/base/centos-stream9:latest]
     end
 
     subgraph L2["Layer 2: Application Build (build-bootc.yml)"]
         E[Push to main or git tag v*] --> F(Build app image<br>FROM base-*)
-        F --> G["Push: ghcr.io/...:centos-stream9-latest\nor :centos-stream9-1.0.0"]
+        F --> G["Push: ghcr.io/.../bootc-testboot/centos-stream9:latest\nor :1.0.0"]
     end
 
     subgraph PR["PR Checks (build-bootc.yml)"]
@@ -140,8 +140,8 @@ graph TD
         M --> N
         N --> O[(GHCR: OCI Registry)]
 
-        O -.-> P["podman pull ...:centos-stream9-qcow2-1.0.0"]
-        O -.-> Q["podman pull ...:centos-stream9-ova-1.0.0"]
+        O -.-> P["podman pull .../centos-stream9/qcow2:1.0.0"]
+        O -.-> Q["podman pull .../centos-stream9/ova:1.0.0"]
     end
 
     C -.->|Used as FROM| F
@@ -155,7 +155,7 @@ graph TD
 Because artifact distribution images are packaged using `scratch` (meaning they do not contain a shell or OS utilities like `ls`), you cannot use `podman run` to inspect them directly. Instead, you can audit the contents of an artifact image by creating a dummy container and exporting its filesystem hierarchy using `tar`.
 
 ```bash
-IMAGE="ghcr.io/duyhenryer/bootc-testboot-centos-stream9-vmdk:latest-amd64"
+IMAGE="ghcr.io/duyhenryer/bootc-testboot/centos-stream9/vmdk:latest"
 
 # 1. Create a container with a dummy /bin/true entrypoint to bypass the scratch image's lack of one
 ctr=$(podman create $IMAGE /bin/true)
@@ -174,11 +174,11 @@ For scripted verification of **all** published tags (skopeo + optional full `pod
 
 Tags are driven by **git tags** (semver). Push to `main` produces `latest`. Creating a git tag triggers a versioned release.
 
-| Event | Git Ref | Image Tags |
+| Event | Git Ref | Image tags (path-style on GHCR) |
 |-------|---------|------------|
-| Push to `main` | `refs/heads/main` | `{distro}-latest` |
-| Git tag `v1.0.0` | `refs/tags/v1.0.0` | `{distro}-1.0.0`, `{distro}-latest` |
-| Git tag `base-v1.0.0` | `refs/tags/base-v1.0.0` | `{distro}-1.0.0`, `{distro}-latest` (base image) |
+| Push to `main` | `refs/heads/main` | `ghcr.io/…/bootc-testboot/<distro>:latest`, `…/base/<distro>:latest` |
+| Git tag `v1.0.0` | `refs/tags/v1.0.0` | `…/bootc-testboot/<distro>:1.0.0` (+ `latest` where workflow pushes both) |
+| Git tag `base-v1.0.0` | `refs/tags/base-v1.0.0` | `…/bootc-testboot/base/<distro>:1.0.0` (base image) |
 | Pull request | `refs/pull/N` | Build + lint only (no push) |
 
 **Release workflow:**

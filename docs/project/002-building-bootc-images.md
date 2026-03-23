@@ -246,6 +246,20 @@ RUN bootc container lint
 
 ---
 
+## GHCR image naming (this repository)
+
+Published names follow a **path-style** image reference on GitHub Container Registry:
+
+| Layer | Example |
+|-------|---------|
+| Base | `ghcr.io/<owner>/bootc-testboot/base/<distro>:latest` or `:1.0.0` |
+| App | `ghcr.io/<owner>/bootc-testboot/<distro>:latest` or `:1.0.0` |
+| Disk artifact | `ghcr.io/<owner>/bootc-testboot/<distro>/<format>:latest` (`qcow2`, `ami`, …) |
+
+Local `make base` / `make build` use the same pattern via `IMAGE_ROOT` in the [Makefile](../../Makefile) (default `ghcr.io/duyhenryer/bootc-testboot`). The application [Containerfile](../../Containerfile) takes `IMAGE_ROOT` and `BASE_DISTRO` so `FROM` resolves to `…/base/<distro>:<tag>`.
+
+---
+
 ## Summary Checklist
 
 - [ ] Use `RUN dnf install` / `apt install` as in app containers

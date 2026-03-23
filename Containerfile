@@ -8,11 +8,12 @@
 #   make build BASE_DISTRO=centos-stream9
 #   make build BASE_DISTRO=fedora-41
 # =============================================================================
-ARG BASE_IMAGE=ghcr.io/duyhenryer/bootc-testboot-base
+# Repo root for GHCR path-style names: ghcr.io/<owner>/bootc-testboot/{base/,}<distro>:<tag>
+ARG IMAGE_ROOT=ghcr.io/duyhenryer/bootc-testboot
 ARG BASE_DISTRO=centos-stream9
 ARG BASE_IMAGE_VERSION=latest
 ARG GIT_SHA=unknown
-FROM ${BASE_IMAGE}:${BASE_DISTRO}-${BASE_IMAGE_VERSION}
+FROM ${IMAGE_ROOT}/base/${BASE_DISTRO}:${BASE_IMAGE_VERSION}
 
 # --- Rootfs Overlays (immutable configs, systemd units, tmpfiles, repo files) ---
 # Must come BEFORE dnf install so MongoDB + RabbitMQ repo files are visible.
@@ -73,11 +74,11 @@ RUN rm -f /var/log/mongodb/mongod.log && \
 RUN bootc container lint --fatal-warnings || exit 1
 
 # --- Image metadata ---
-ARG BASE_IMAGE
+ARG IMAGE_ROOT
 ARG BASE_DISTRO
 ARG BASE_IMAGE_VERSION
 ARG GIT_SHA
 LABEL containers.bootc=1
 LABEL org.opencontainers.image.source="https://github.com/duyhenryer/bootc-testboot"
-LABEL org.opencontainers.image.base.name="${BASE_IMAGE}:${BASE_DISTRO}-${BASE_IMAGE_VERSION}"
+LABEL org.opencontainers.image.base.name="${IMAGE_ROOT}/base/${BASE_DISTRO}:${BASE_IMAGE_VERSION}"
 LABEL org.opencontainers.image.revision="${GIT_SHA}"

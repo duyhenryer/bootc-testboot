@@ -6,7 +6,7 @@ After CI publishes images to GitHub Container Registry (GHCR), verify manifests 
 
 This project’s images are **public**. You do **not** need `podman login` or a token — `skopeo` and `podman pull` work anonymously.
 
-**CI:** images and disk artifacts are **amd64-only** for now (`*-latest-amd64` style tags). Arm64 is deferred — see comments in [`Containerfile`](../../Containerfile) and `.github/workflows/build-*.yml` for how to re-enable.
+**CI:** images and disk artifacts are **linux/amd64** only. Tags are **path-style** (no `-arch` suffix), e.g. `…/bootc-testboot/centos-stream9:latest`, `…/bootc-testboot/centos-stream9/qcow2:latest`. Use `podman pull --platform linux/amd64` when needed. Optional aarch64: see `.github/workflows/build-*.yml` comments.
 
 RabbitMQ registry-side context (mirrors, CS10): [011-rabbitmq-repos-and-cs10.md](011-rabbitmq-repos-and-cs10.md).
 
@@ -32,7 +32,7 @@ If a package is **private**, use `podman login ghcr.io` with a PAT before `podma
 
 ## What the script checks
 
-1. **`skopeo inspect`** — Each artifact (`-ami`, `-qcow2`, `-raw`, `-vmdk`, `-ova`, `-anaconda-iso`) plus base and app images: manifest readable, digest, `architecture`, `os`, `created`.
+1. **`skopeo inspect`** — Each artifact path (`ami`, `qcow2`, `raw`, `vmdk`, `ova`, `anaconda-iso` under `…/bootc-testboot/<distro>/`) plus base (`…/base/<distro>`) and app (`…/<distro>`): manifest readable, digest, `architecture`, `os`, `created`.
 
 2. **`podman pull` + deep checks** (unless `VERIFY_SKIP_PULL=1`):  
    - Scratch artifacts: `podman create` + `podman export \| tar -tf` — paths match [005-manual-deployments.md — Artifact path reference](005-manual-deployments.md).  
@@ -42,9 +42,9 @@ If a package is **private**, use `podman login ghcr.io` with a PAT before `podma
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `REGISTRY_PREFIX` | `ghcr.io/duyhenryer` | Registry / namespace |
-| `DISTRO` | `centos-stream9` | Image name segment |
-| `ARCH_SUFFIX` | `latest-amd64` | Tag suffix (CI publishes **amd64** only; no `latest-arm64` from these workflows) |
+| `REGISTRY_PREFIX` | `ghcr.io/duyhenryer` | Registry / owner prefix |
+| `DISTRO` | `centos-stream9` | Distro segment in image path |
+| `IMAGE_TAG` | `latest` | Tag (e.g. `latest` or semver; no `-arch` in tag name) |
 | `VERIFY_SKIP_SKOPEO` | unset | Set `1` to skip skopeo |
 | `VERIFY_SKIP_PULL` | unset | Set `1` to skip pulls and tarball checks |
 
