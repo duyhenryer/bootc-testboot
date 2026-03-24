@@ -19,7 +19,7 @@ readlink -f /etc/nginx/nginx.conf
 
 You should see a symlink into `/usr/share/nginx/`.
 
-**`mongodb-init.service`** runs `/usr/libexec/testboot/mongodb-init.sh`, which calls **`mongosh`**. The app image installs the **`mongodb-mongosh`** package alongside `mongodb-org-server` so replica-set init and admin user creation can succeed.
+**`mongodb-init.service`** runs `/usr/libexec/testboot/mongodb-init.sh`, which calls **`mongosh`** to `mongodb://127.0.0.1:27017/` without TLS (`preferTLS` allows localhost plain). The app image installs the **`mongodb-mongosh`** package alongside `mongodb-org-server` so replica-set init and admin user creation can succeed.
 
 ---
 
