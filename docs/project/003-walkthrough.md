@@ -188,7 +188,7 @@ curl -sf http://127.0.0.1:8080/health || true
 touch /usr/bin/.test 2>&1 || echo "/usr is not writable (expected)"
 ```
 
-**Registry audit (on your laptop, not on the VM):** after CI publishes to GHCR, run `make verify-ghcr` or `./scripts/verify-ghcr-packages.sh` to pull and verify artifact images — [010-ghcr-audit.md](010-ghcr-audit.md).
+**Registry audit (on your laptop, not on the VM):** after CI publishes to GHCR, run `make verify-ghcr` or `./scripts/verify-ghcr-packages.sh` to pull and verify artifact images — [009-ghcr-audit.md](009-ghcr-audit.md).
 
 ---
 

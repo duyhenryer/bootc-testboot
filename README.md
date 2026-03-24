@@ -168,7 +168,7 @@ podman export $ctr | tar -tv
 podman rm $ctr
 ```
 
-For scripted verification of **all** published tags (skopeo + optional full `podman pull`), run `./scripts/verify-ghcr-packages.sh` or `make verify-ghcr` — see [docs/project/010-ghcr-audit.md](docs/project/010-ghcr-audit.md). Public GHCR images need no login; large pulls need tens of GB free disk — use `VERIFY_SKIP_PULL=1` for metadata-only.
+For scripted verification of **all** published tags (skopeo + optional full `podman pull`), run `./scripts/verify-ghcr-packages.sh` or `make verify-ghcr` — see [docs/project/009-ghcr-audit.md](docs/project/009-ghcr-audit.md). Public GHCR images need no login; large pulls need tens of GB free disk — use `VERIFY_SKIP_PULL=1` for metadata-only.
 
 ## Versioning & Tagging
 
@@ -246,7 +246,6 @@ How we use bootc to build, test, and deliver our product.
 | [004](docs/project/004-runbook.md) | Operations Runbook |
 | [005](docs/project/005-manual-build-and-deployment.md) | Manual build and VM deployment (includes bootc-image-builder reference) |
 | [006](docs/project/006-production-upgrade-scenarios.md) | Production Upgrade Scenarios |
-| [007](docs/project/007-local-testing-guide.md) | Local Testing Guide (incl. post-deploy audit / troubleshooting) |
-| [008](docs/project/008-test-case-registry.md) | Test Case Registry |
-| [009](docs/project/009-rootfs-overlay-guide.md) | Rootfs Overlay Guide (build-time to runtime mapping) |
-| [010](docs/project/010-ghcr-audit.md) | GHCR audit (`verify-ghcr-packages.sh`, skopeo, podman) |
+| [007](docs/project/007-testing-guide-and-registry.md) | Local testing and test case registry (incl. post-deploy audit / troubleshooting) |
+| [008](docs/project/008-rootfs-overlay-guide.md) | Rootfs Overlay Guide (build-time to runtime mapping) |
+| [009](docs/project/009-ghcr-audit.md) | GHCR audit (`verify-ghcr-packages.sh`, skopeo, podman) |
