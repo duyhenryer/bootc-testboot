@@ -1,6 +1,6 @@
-# Manual VM Deployments
+# Manual build and VM deployment
 
-The CI pipeline generates disk images (AMI, QCOW2, VMDK, etc.) and packages them into OCI containers on GitHub Container Registry (GHCR). This document explains how to get those disk images and deploy them to your cloud environment.
+The CI pipeline generates disk images (AMI, QCOW2, VMDK, etc.) and packages them into OCI containers on GitHub Container Registry (GHCR). This document explains how to obtain those disk images—build them locally from the bootc OCI image, or pull a CI-built artifact from GHCR—and deploy them to your cloud environment.
 
 You have **two options** for every deployment target:
 
@@ -58,7 +58,7 @@ Change `centos/stream9` to your target distro (`centos/stream10`, `fedora/40`, `
 
 After building, verify with `podman images | grep bootc-testboot`. Then proceed to the deployment section for your target (AWS, GCE, VMware).
 
-After a VM is up (e.g. EC2), use [007-local-testing-guide.md](007-local-testing-guide.md) — **Post-deploy audit** — to check `systemd` failed units, app health, MongoDB init, symlinks, and **`hello` log files** (`hello.log`, `healthcheck.log` under `/var/log/bootc-testboot/hello/`).
+After a VM is up (e.g. EC2), use [006-testing-guide-and-registry.md](006-testing-guide-and-registry.md) — **Post-deploy audit** — to check `systemd` failed units, app health, MongoDB init, symlinks, and **`hello` log files** (`hello.log`, `healthcheck.log` under `/var/log/bootc-testboot/hello/`).
 
 ---
 
@@ -96,7 +96,7 @@ The disk file path **inside** the OCI container depends on the format. These pat
 | OVA | `ova` | `/*.ova` | `.../bootc-testboot/centos-stream9/ova:latest` |
 | Anaconda ISO | `anaconda-iso` | `/bootiso/disk.iso` | `.../bootc-testboot/centos-stream9/anaconda-iso:latest` |
 
-To verify all published images and these paths automatically, run [010-ghcr-audit.md](010-ghcr-audit.md) (`./scripts/verify-ghcr-packages.sh` or `make verify-ghcr`).
+To verify all published images and these paths automatically, run [008-ghcr-audit.md](008-ghcr-audit.md) (`./scripts/verify-ghcr-packages.sh` or `make verify-ghcr`).
 
 ### How to extract a disk file (generic steps)
 

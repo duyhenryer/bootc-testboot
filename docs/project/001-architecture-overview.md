@@ -54,7 +54,7 @@ flowchart TB
 | Target | When to use | What it does |
 |--------|-------------|--------------|
 | `make audit` | Before push / local CI parity | Builds **all** base images + app image on disk, runs `bootc container lint --fatal-warnings` on each. **No** `podman pull` from GHCR. |
-| `make verify-ghcr` | After CI published to GHCR | Runs [`scripts/verify-ghcr-packages.sh`](../../scripts/verify-ghcr-packages.sh): `skopeo inspect` and `podman pull` of **remote** tags, validates artifact paths. Run on a dev machine with free disk; see [010-ghcr-audit.md](010-ghcr-audit.md). Use `VERIFY_SKIP_PULL=1` for metadata-only. |
+| `make verify-ghcr` | After CI published to GHCR | Runs [`scripts/verify-ghcr-packages.sh`](../../scripts/verify-ghcr-packages.sh): `skopeo inspect` and `podman pull` of **remote** tags, validates artifact paths. Run on a dev machine with free disk; see [008-ghcr-audit.md](008-ghcr-audit.md). Use `VERIFY_SKIP_PULL=1` for metadata-only. |
 
 ---
 
@@ -158,7 +158,7 @@ flowchart LR
 | `bootc/apps/<name>/` | systemd units, nginx vhosts, tmpfiles | `/usr/lib/systemd/system/`, `/usr/share/nginx/conf.d/` |
 | `output/bin/` (separate COPY) | Compiled app binaries | `/usr/bin/` |
 
-Configs in `/usr/share/` are symlinked from `/etc/` at build time (`ln -sf`), making them read-only at runtime while services still find them at the expected `/etc/` path. For the full mapping of every file, see [009-rootfs-overlay-guide.md](009-rootfs-overlay-guide.md).
+Configs in `/usr/share/` are symlinked from `/etc/` at build time (`ln -sf`), making them read-only at runtime while services still find them at the expected `/etc/` path. For the full mapping of every file, see [007-rootfs-overlay-guide.md](007-rootfs-overlay-guide.md).
 
 ---
 
