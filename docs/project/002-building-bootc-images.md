@@ -129,7 +129,7 @@ RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf
 
 ### Immutable Configs (Appliance Delivery)
 
-For customer-facing appliances, put all configs in `/usr/share/<service>/` and symlink from `/etc/`. This makes configs read-only at runtime -- customers cannot edit them, and upgrades replace them atomically with zero merge conflicts. See [006-production-upgrade-scenarios.md](006-production-upgrade-scenarios.md) for details.
+For customer-facing appliances, put all configs in `/usr/share/<service>/` and symlink from `/etc/`. This makes configs read-only at runtime -- customers cannot edit them, and upgrades replace them atomically with zero merge conflicts. See [005-production-upgrade-scenarios.md](005-production-upgrade-scenarios.md) for details.
 
 ### Drop-in Directories (Base OS Tuning)
 

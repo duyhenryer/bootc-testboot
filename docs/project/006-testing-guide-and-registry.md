@@ -579,7 +579,7 @@ bootc-testboot/
 ├── .github/workflows/
 └── docs/
     ├── bootc/               # bootc learning docs (001-012)
-    └── project/             # Project docs (001-009)
+    └── project/             # Project docs (001-008)
 ```
 
 - **Checks:**
@@ -617,7 +617,7 @@ bootc-testboot/
 ## Registry: post-publish GHCR (TC-12)
 
 - **Command:** `make verify-ghcr` (runs [`scripts/verify-ghcr-packages.sh`](../../scripts/verify-ghcr-packages.sh))
-- **What it tests:** Remote manifests (`skopeo inspect`) and, unless `VERIFY_SKIP_PULL=1`, full `podman pull` plus tarball path checks for disk artifacts and bootc labels for base/app images — see [009-ghcr-audit.md](009-ghcr-audit.md).
+- **What it tests:** Remote manifests (`skopeo inspect`) and, unless `VERIFY_SKIP_PULL=1`, full `podman pull` plus tarball path checks for disk artifacts and bootc labels for base/app images — see [008-ghcr-audit.md](008-ghcr-audit.md).
 - **Not the same as:** `make audit` (local rebuild + lint, no registry pull).
 
 ---
@@ -639,7 +639,7 @@ bootc-testboot/
 
 ### Post-deploy audit (EC2 / VM)
 
-Use this after SSH (or serial console) to a booted instance. It complements [009-ghcr-audit.md](009-ghcr-audit.md) (registry-side checks).
+Use this after SSH (or serial console) to a booted instance. It complements [008-ghcr-audit.md](008-ghcr-audit.md) (registry-side checks).
 
 **Failed units and logs**
 

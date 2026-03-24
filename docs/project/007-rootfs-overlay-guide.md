@@ -251,7 +251,7 @@ flowchart LR
 
 ### When customers need overrides
 
-If a customer needs custom settings (e.g., different MongoDB bind address), they should use systemd drop-in overrides or environment files in `/etc`, not edit the config directly. This is documented in [006-production-upgrade-scenarios.md](006-production-upgrade-scenarios.md).
+If a customer needs custom settings (e.g., different MongoDB bind address), they should use systemd drop-in overrides or environment files in `/etc`, not edit the config directly. This is documented in [005-production-upgrade-scenarios.md](005-production-upgrade-scenarios.md).
 
 ---
 
@@ -274,4 +274,4 @@ In all cases, the wildcard COPY means no Containerfile edits are needed for the 
 - [001-architecture-overview.md](001-architecture-overview.md) -- Build pipeline and filesystem model diagrams
 - [bootc/README.md](../../bootc/README.md) -- Layer roles, file placement rules, extension guide
 - [003-filesystem-layout.md](../bootc/003-filesystem-layout.md) -- Deep dive into `/usr`, `/etc`, `/var` at runtime
-- [006-production-upgrade-scenarios.md](006-production-upgrade-scenarios.md) -- What happens to each zone during upgrades
+- [005-production-upgrade-scenarios.md](005-production-upgrade-scenarios.md) -- What happens to each zone during upgrades
