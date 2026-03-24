@@ -1,6 +1,6 @@
-# Manual VM Deployments
+# Manual build and VM deployment
 
-The CI pipeline generates disk images (AMI, QCOW2, VMDK, etc.) and packages them into OCI containers on GitHub Container Registry (GHCR). This document explains how to get those disk images and deploy them to your cloud environment.
+The CI pipeline generates disk images (AMI, QCOW2, VMDK, etc.) and packages them into OCI containers on GitHub Container Registry (GHCR). This document explains how to obtain those disk images—build them locally from the bootc OCI image, or pull a CI-built artifact from GHCR—and deploy them to your cloud environment.
 
 You have **two options** for every deployment target:
 

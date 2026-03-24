@@ -33,7 +33,7 @@ If a package is **private**, use `podman login ghcr.io` with a PAT before `podma
 1. **`skopeo inspect`** — Each artifact path (`ami`, `qcow2`, `raw`, `vmdk`, `ova`, `anaconda-iso` under `…/bootc-testboot/<distro>/`) plus base (`…/base/<distro>`) and app (`…/<distro>`): manifest readable, digest, `architecture`, `os`, `created`.
 
 2. **`podman pull` + deep checks** (unless `VERIFY_SKIP_PULL=1`):  
-   - Scratch artifacts: `podman create` + `podman export \| tar -tf` — paths match [005-manual-deployments.md — Artifact path reference](005-manual-deployments.md).  
+   - Scratch artifacts: `podman create` + `podman export \| tar -tf` — paths match [005-manual-build-and-deployment.md — Artifact path reference](005-manual-build-and-deployment.md).  
    - Base/app: label `containers.bootc=1` and `/etc/os-release` readable.
 
 ## Environment variables
@@ -104,5 +104,5 @@ Overall: PASSED
 
 ## Related documentation
 
-- [005-manual-deployments.md](005-manual-deployments.md) — Artifact path reference  
+- [005-manual-build-and-deployment.md](005-manual-build-and-deployment.md) — Artifact path reference  
 - [README.md](../../README.md) — Auditing scratch artifact images

@@ -216,7 +216,7 @@ Disk images (AMI, VMDK, OVA, QCOW2, ISO) are built in CI via `workflow_dispatch`
 2. **Base distro** defaults to **all** (builds centos-stream9, centos-stream10, fedora-40, and fedora-41). Pick a single distro to limit the run. Set `platforms` and `formats` as needed (e.g. `qcow2,vmdk,ami`).
 3. Artifacts are pushed to GHCR as OCI scratch images
 
-For extraction, deployment, and verification steps, see [005-manual-deployments.md](005-manual-deployments.md).
+For extraction, deployment, and verification steps, see [005-manual-build-and-deployment.md](005-manual-build-and-deployment.md).
 
 ---
 
@@ -232,4 +232,4 @@ For extraction, deployment, and verification steps, see [005-manual-deployments.
 | Check /etc drift | `sudo ostree admin config-diff` |
 | Update bootloader | `sudo bootupctl update` |
 | Create disk images | `workflow_dispatch` on `build-artifacts.yml` with `formats=...` (default `base_distro=all`) |
-| Pull disk artifact | See [005-manual-deployments.md](005-manual-deployments.md) |
+| Pull disk artifact | See [005-manual-build-and-deployment.md](005-manual-build-and-deployment.md) |

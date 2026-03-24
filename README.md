@@ -244,7 +244,7 @@ How we use bootc to build, test, and deliver our product.
 | [002](docs/project/002-building-bootc-images.md) | Building Our Images |
 | [003](docs/project/003-walkthrough.md) | Walkthrough |
 | [004](docs/project/004-runbook.md) | Operations Runbook |
-| [005](docs/project/005-manual-deployments.md) | Manual VM Deployments (includes bootc-image-builder reference) |
+| [005](docs/project/005-manual-build-and-deployment.md) | Manual build and VM deployment (includes bootc-image-builder reference) |
 | [006](docs/project/006-production-upgrade-scenarios.md) | Production Upgrade Scenarios |
 | [007](docs/project/007-local-testing-guide.md) | Local Testing Guide (incl. post-deploy audit / troubleshooting) |
 | [008](docs/project/008-test-case-registry.md) | Test Case Registry |

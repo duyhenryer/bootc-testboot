@@ -131,7 +131,7 @@ Disk images (AMI, VMDK, OVA, QCOW2, ISO) are built in CI, not locally. Use `work
 
 ### Pulling and deploying disk artifacts
 
-For step-by-step extraction and deployment instructions (AWS, GCP, VMware, bare metal), see [005-manual-deployments.md](005-manual-deployments.md). That document covers:
+For step-by-step extraction and deployment instructions (AWS, GCP, VMware, bare metal), see [005-manual-build-and-deployment.md](005-manual-build-and-deployment.md). That document covers:
 
 - How to extract disk files from OCI artifacts (`podman create` + `podman cp`)
 - Artifact path reference table for all formats (AMI, QCOW2, VMDK, OVA, ISO)
