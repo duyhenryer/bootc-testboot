@@ -284,7 +284,9 @@ journalctl -u mongodb-init.service -b --no-pager -l
 **MongoDB init**
 
 - `mongodb-init.service` runs `mongosh` (package **`mongodb-mongosh`**). If the journal shows `mongosh: command not found`, rebuild the app image from a current `Containerfile` and redeploy.
+- `mongod.conf` uses `net.tls.mode: preferTLS`, so **`mongosh` connects to `127.0.0.1` without `--tls`** for init (plain localhost is allowed). Using `--tls` without `--tlsCAFile` can cause `MongoServerSelectionError` / connection closed.
 - Init creates `/var/lib/mongodb/.rs-initialized` when finished. If `.rs-initialized` is missing and `mongosh` works, run `sudo systemctl start mongodb-init.service` once.
+- Quick check: `mongosh "mongodb://127.0.0.1:27017/" --eval 'db.adminCommand({ ping: 1 })'` should return `{ ok: 1 }`.
 
 **Symlinks (`/etc` → `/usr/share`)**
 

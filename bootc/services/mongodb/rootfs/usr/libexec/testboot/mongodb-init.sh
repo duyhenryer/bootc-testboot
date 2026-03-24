@@ -8,6 +8,10 @@
 #
 # Uses MongoDB's localhost exception to create the first user
 # before auth takes effect.
+#
+# Connection: mongosh to mongodb://127.0.0.1:27017/ without TLS. With
+# net.tls.mode preferTLS (see mongod.conf), plain localhost is allowed;
+# do not use --tls here without --tlsCAFile (handshake can fail).
 
 set -euo pipefail
 source /usr/libexec/testboot/log.sh
@@ -20,29 +24,34 @@ fi
 
 ADMIN_PW=$(cat /var/lib/mongodb/.admin-pw)
 
-mongosh --quiet --tls --tlsAllowInvalidCertificates --eval "
+export MONGOSH_ADMIN_PW="$ADMIN_PW"
+trap 'unset MONGOSH_ADMIN_PW 2>/dev/null || true' EXIT
+
+mongosh --quiet "mongodb://127.0.0.1:27017/" --eval '
   let initialized = false;
   try { initialized = (rs.status().ok === 1); } catch(e) {}
 
   if (!initialized) {
-    rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }] });
+    rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "localhost:27017" }] });
     let ready = false;
     for (let i = 0; i < 30; i++) {
       if (db.hello().isWritablePrimary) { ready = true; break; }
       sleep(2000);
     }
-    if (!ready) { throw new Error('rs0 primary election timed out after 60s'); }
+    if (!ready) { throw new Error("rs0 primary election timed out after 60s"); }
   }
 
-  const adminDb = db.getSiblingDB('admin');
-  if (adminDb.getUser('admin') === null) {
+  const adminDb = db.getSiblingDB("admin");
+  const pw = process.env.MONGOSH_ADMIN_PW;
+  if (!pw) { throw new Error("MONGOSH_ADMIN_PW not set"); }
+  if (adminDb.getUser("admin") === null) {
     adminDb.createUser({
-      user: 'admin',
-      pwd: '${ADMIN_PW}',
-      roles: ['root']
+      user: "admin",
+      pwd: pw,
+      roles: ["root"]
     });
   }
-"
+'
 
 touch "$FLAG"
 log_info "MongoDB initialized: rs0 + admin user created"
