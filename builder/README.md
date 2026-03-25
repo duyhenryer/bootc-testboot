@@ -42,7 +42,7 @@ Key settings:
 
 - **Firmware:** `vmw:firmware="efi"` -- required because `bootc-image-builder` produces EFI-bootable disks. Without this, vSphere defaults to BIOS and the VM will not boot.
 - **SCSI Controller:** `lsilogic` for broad compatibility (ESXi 5.x+, Workstation, VirtualBox). For vSphere 6.5+ production workloads, change `<rasd:ResourceSubType>` to `pvscsi` (paravirtual) for better I/O performance.
-- **Hardware version:** `vmx-14` (vSphere 6.7+). Raise to `vmx-19` for vSphere 7.0+ features or `vmx-21` for vSphere 8.0+.
+- **Hardware version:** `vmx-19` (vSphere 7.0+) by default. Lower to `vmx-14` or `vmx-17` in the OVF if you must target very old ESXi clusters that do not support hardware version 19. Raise to `vmx-21` for vSphere 8.0+ features if needed.
 - **Network:** VmxNet3 adapter on `VM Network`. Adjust the network name to match your vSphere environment.
 
 ## Usage

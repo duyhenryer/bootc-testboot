@@ -725,7 +725,7 @@ An OVA is a tar archive containing three files:
 | `*.vmdk` | The actual disk image (streamOptimized format for network transfer) |
 | `*.mf` | SHA256 checksums of the OVF and VMDK files |
 
-The OVF template lives at [`builder/ova/bootc-testboot.ovf`](../../builder/ova/bootc-testboot.ovf). It uses placeholders (`CPU_COUNT`, `MEMORY_MB`, `DISK_SIZE_GB`, `VMDK_FILENAME`, `VMDK_SIZE`) that are filled in during packaging. See [`builder/README.md`](../../builder/README.md) for details on the OVF settings (EFI firmware, SCSI controller, hardware version).
+The OVF template lives at [`builder/ova/bootc-testboot.ovf`](../../builder/ova/bootc-testboot.ovf). It uses placeholders (`CPU_COUNT`, `MEMORY_MB`, `DISK_SIZE_GB`, `VMDK_FILENAME`, `VMDK_SIZE`) that are filled in during packaging. See [`builder/README.md`](../../builder/README.md) for details on the OVF settings (EFI firmware, SCSI controller, hardware version). **Hardware version** defaults to **vmx-19** (vSphere 7.0+); lower it in the OVF if you must support older ESXi clusters.
 
 ### OVA build flow
 
