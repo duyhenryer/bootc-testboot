@@ -42,7 +42,7 @@
         <vssd:ElementName>Virtual Hardware Family</vssd:ElementName>
         <vssd:InstanceID>0</vssd:InstanceID>
         <vssd:VirtualSystemIdentifier>bootc-testboot</vssd:VirtualSystemIdentifier>
-        <vssd:VirtualSystemType>vmx-14</vssd:VirtualSystemType>
+        <vssd:VirtualSystemType>vmx-19</vssd:VirtualSystemType>
       </System>
 
       <!-- CPU_COUNT vCPUs -->
