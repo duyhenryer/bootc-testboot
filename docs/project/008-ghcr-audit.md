@@ -2,6 +2,19 @@
 
 After CI publishes images to GitHub Container Registry (GHCR), verify manifests and (optionally) pull images to confirm disk artifacts contain the expected paths.
 
+## Table of Contents
+
+- [Public images (default)](#public-images-default)
+- [Private packages (optional note)](#private-packages-optional-note)
+- [Tools](#tools)
+- [Prerequisites](#prerequisites)
+- [What the script checks](#what-the-script-checks)
+- [Environment variables](#environment-variables)
+- [Commands](#commands)
+- [Exit code and report](#exit-code-and-report)
+- [Example output (abbreviated)](#example-output-abbreviated)
+- [Related documentation](#related-documentation)
+
 ## Public images (default)
 
 This project’s images are **public**. You do **not** need `podman login` or a token — `skopeo` and `podman pull` work anonymously.

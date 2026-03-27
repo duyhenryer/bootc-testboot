@@ -6,6 +6,22 @@ A deep-dive guide for DevOps teams building bootc-compatible container images. b
 - [bootc: Generic guidance for building images](https://bootc-dev.github.io/bootc/building/guidance.html)
 - [bootc: "bootc compatible" images](https://bootc-dev.github.io/bootc/bootc-images.html)
 
+## Table of Contents
+
+- [Core Principle: Same as App Containers](#core-principle-same-as-app-containers)
+- [Understanding Mutability](#understanding-mutability)
+- [systemd as pid 1](#systemd-as-pid-1)
+- [LABEL containers.bootc 1](#label-containersbootc-1)
+- [Kernel Placement](#kernel-placement)
+- [bootc container lint](#bootc-container-lint)
+- [Configuration Placement](#configuration-placement)
+- [Handling Read-Only vs Writable](#handling-read-only-vs-writable)
+- [Nesting OCI Containers (Avoid)](#nesting-oci-containers-avoid)
+- [Deriving from Base Images](#deriving-from-base-images)
+- [Practical Example: Complete Containerfile](#practical-example-complete-containerfile)
+- [GHCR image naming (this repository)](#ghcr-image-naming-this-repository)
+- [Summary Checklist](#summary-checklist)
+
 ---
 
 ## Core Principle: Same as App Containers

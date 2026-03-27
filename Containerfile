@@ -13,6 +13,27 @@ ARG IMAGE_ROOT=ghcr.io/duyhenryer/bootc-testboot
 ARG BASE_DISTRO=centos-stream9
 ARG BASE_IMAGE_VERSION=latest
 ARG GIT_SHA=unknown
+# Official MongoDB SELinux module — compile in a throwaway stage so selinux-policy-devel
+# does not leave /var/lib/selinux + sepolgen debris in the final image (bootc container lint).
+# https://github.com/mongodb/mongodb-selinux
+ARG MONGODB_SELINUX_SHA=18181652362a46fd4511a56f20c4055712deb252
+
+FROM ${IMAGE_ROOT}/base/${BASE_DISTRO}:${BASE_IMAGE_VERSION} AS mongodb-selinux-builder
+ARG MONGODB_SELINUX_SHA
+RUN dnf install -y git make checkpolicy selinux-policy-devel && \
+    dnf clean all && \
+    rm -rf /var/cache/{dnf,ldconfig} /var/log/{dnf*,hawkey*,rhsm} /var/lib/dnf
+RUN git clone https://github.com/mongodb/mongodb-selinux.git /tmp/mongodb-selinux && \
+    cd /tmp/mongodb-selinux && git checkout "${MONGODB_SELINUX_SHA}" && \
+    make -j"$(nproc)" && \
+    install -D -m 0644 build/targeted/mongodb.pp /mongodb.pp && \
+    rm -rf /tmp/mongodb-selinux
+# Supplemental local module: FTDC proc/sysctl/nfs rules not covered upstream.
+COPY bootc/services/mongodb/selinux/mongodb-ftdc-local.te /tmp/mongodb-ftdc-local.te
+RUN checkmodule -M -m -o /tmp/mongodb-ftdc-local.mod /tmp/mongodb-ftdc-local.te && \
+    semodule_package -o /mongodb-ftdc-local.pp -m /tmp/mongodb-ftdc-local.mod && \
+    rm /tmp/mongodb-ftdc-local.te /tmp/mongodb-ftdc-local.mod
+
 FROM ${IMAGE_ROOT}/base/${BASE_DISTRO}:${BASE_IMAGE_VERSION}
 
 # --- Rootfs Overlays (immutable configs, systemd units, tmpfiles, repo files) ---
@@ -28,10 +49,26 @@ RUN rpm --import https://pgp.mongodb.com/server-8.0.asc && \
     rpm --import https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-server.9F4587F226208342.key
 
 RUN dnf install -y logrotate nginx mongodb-org-server mongodb-mongosh erlang rabbitmq-server valkey \
-      iptables arptables iputils && \
+      iptables arptables iputils \
+      policycoreutils policycoreutils-python-utils && \
     dnf clean all && \
     rm -rf /var/cache/{dnf,ldconfig} && \
     rm -rf /var/log/{dnf*,hawkey*,rhsm} /var/lib/dnf
+
+COPY --from=mongodb-selinux-builder /mongodb.pp /usr/share/selinux/targeted/mongodb.pp
+COPY --from=mongodb-selinux-builder /mongodb-ftdc-local.pp /usr/share/selinux/targeted/mongodb-ftdc-local.pp
+# --- SELinux: install MongoDB policy modules at build time (bootc-idiomatic) ---
+# semodule writes the compiled policy to /etc/selinux/targeted/policy/ which is
+# preserved across upgrades via the /etc 3-way merge. The kernel reads it at boot.
+# The kernel-load step (semodule final phase) silently fails in a container build
+# context (no /sys/fs/selinux mounted) — || true is intentional.
+# restorecon for /var/lib/mongodb is deferred to mongod ExecStartPre because /var
+# does not exist at build time (it is created by tmpfiles.d on first boot).
+RUN semodule --priority 200 --store targeted \
+      --install /usr/share/selinux/targeted/mongodb.pp || true && \
+    semodule --priority 100 --store targeted \
+      --install /usr/share/selinux/targeted/mongodb-ftdc-local.pp || true && \
+    semanage fcontext -a -t mongod_var_lib_t '/var/lib/mongodb(/.*)?' || true
 
 # --- Pre-built app binaries (from output/bin/) ---
 COPY output/bin/ /usr/bin/

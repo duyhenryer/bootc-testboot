@@ -9,6 +9,19 @@ You have **two options** for every deployment target:
 
 Currently tested end-to-end: **AWS EC2** and **Google Cloud Platform**. VMware and bare metal sections are included for reference but not yet validated.
 
+## Table of Contents
+
+- [Local build prerequisites (Option A)](#local-build-prerequisites-option-a)
+- [1. How Artifacts Work](#1-how-artifacts-work)
+- [2. bootc-image-builder Reference](#2-bootc-image-builder-reference)
+- [3. Deploying to AWS EC2 (AMI)](#3-deploying-to-aws-ec2-ami)
+- [4. Deploying to Google Cloud Platform (GCE)](#4-deploying-to-google-cloud-platform-gce)
+- [5. Deploying to VMware (VMDK / OVA)](#5-deploying-to-vmware-vmdk--ova)
+- [6. Bare Metal (Anaconda ISO)](#6-bare-metal-anaconda-iso)
+- [7. Adding New Deployment Targets](#7-adding-new-deployment-targets)
+- [8. Running QCOW2 Locally](#8-running-qcow2-locally)
+- [9. Tips and Checklist](#9-tips-and-checklist)
+
 ### Local build prerequisites (Option A)
 
 Option A requires a bootc OCI image built from this repo. If you have not built one yet, do it first. You can use Make **or** podman directly:
@@ -230,6 +243,17 @@ Rules:
 - Subdirectories of `/var` supported, e.g. `/var/data`
 - `/var` itself cannot be a mountpoint
 - Symlinks in `/var` (e.g. `/var/home`, `/var/run`) cannot be mountpoints
+- If `--rootfs btrfs` is used, keep filesystem customizations to `/` and `/boot` only
+
+Recommended filesystem strategy by deployment type:
+
+| Deployment target | Builder config | Recommended profile |
+|---|---|---|
+| AWS AMI | `builder/ami/config.toml` | `cloud-minimal` (small `/`, data on EBS) |
+| GCE (raw import) | `builder/gce/config.toml` | `cloud-minimal` (small `/`, data on Persistent Disk) |
+| Generic raw | `builder/raw/config.toml` | `portable-minimal` |
+| QCOW2 lab/KVM | `builder/qcow2/config.toml` | `portable-minimal` |
+| VMware VMDK/OVA | `builder/vmdk/config.toml` | `onprem-stateful` (`/` + `/var/*` as needed) |
 
 **Kernel arguments:**
 
@@ -784,6 +808,17 @@ flowchart TD
 | **govc** (optional) | Open-source Go CLI for vSphere. Install: `go install github.com/vmware/govmomi/govc@latest` or download from [GitHub releases](https://github.com/vmware/govmomi/releases) |
 | **ovftool** (optional) | VMware proprietary CLI. Download from [VMware Developer](https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest) |
 
+### Console login vs SSH (OVA / VMDK)
+
+[`builder/vmdk/config.toml`](../../builder/vmdk/config.toml) injects user **`devops`** with an SSH **public key** and a **`password`** field (SHA-512 crypt) used for **local console** login (hypervisor VM console, serial), e.g. when you have not yet got a network path for SSH.
+
+| Channel | How to authenticate |
+|---------|---------------------|
+| **VM console** (Xen Orchestra, vSphere console, serial) | User `devops` and the lab password documented in [`builder/README.md`](../../builder/README.md): **`BootcOvaConsoleDevAb`** — change with `passwd` after first login or replace the hash in [`builder/vmdk/config.toml`](../../builder/vmdk/config.toml) before production builds. |
+| **SSH** | Still **private key** matching the `key = "..."` line in `config.toml`. The base image keeps [`PasswordAuthentication no`](../../base/rootfs/etc/ssh/sshd_config.d/99-hardening.conf), so SSH does not accept passwords unless you add a separate `sshd` drop-in. |
+
+Baking a password into the disk image means **every VM** built from that `config.toml` shares it until you change it on the machine or rebuild with a new hash (see [`builder/README.md`](../../builder/README.md)).
+
 ### Option A: Build locally (A to Z)
 
 **Step 1: Build the bootc OCI image**
@@ -1063,7 +1098,7 @@ Content of `wheel-passwordless-sudo`:
 - [ ] Use `--privileged`; not suitable for ECS/Fargate
 - [ ] Mount `/var/lib/containers/storage`
 - [ ] Mount config as `/config.toml` or `/config/config.toml`
-- [ ] For AWS: prefer `import-image` (creates AMI directly) over `import-snapshot` + `register-image`
+- [ ] For AWS bootc/ostree images: prefer `import-snapshot` + `register-image` (do not use `import-image`)
 - [ ] For AMI auto-upload: all of `--aws-ami-name`, `--aws-bucket`, `--aws-region`
 - [ ] Use `--env-file` for AWS secrets, never plain `--env`
 - [ ] Add vmimport role and S3 permissions for AMI (required for both `import-image` and `import-snapshot`)
@@ -1080,3 +1115,27 @@ Content of `wheel-passwordless-sudo`:
 - [ ] For GCE: `--type raw` then tar.gz, or `--type gce` for direct tar.gz output
 - [ ] For GCE: IAM `roles/compute.imageAdmin` + `roles/storage.objectAdmin`
 - [ ] Filesystem: only `/`, `/boot`, and `/var/*` subdirs (no `/var` itself, no symlinks)
+- [ ] If using `--rootfs btrfs`, do not define extra `/var/*` mountpoints
+
+### Filesystem verify checklist (after build and after boot)
+
+After artifact build:
+
+```bash
+# Confirm output path matches the type
+ls -R output
+```
+
+After the VM boots:
+
+```bash
+# Validate block devices and mounted filesystems
+lsblk -o NAME,FSTYPE,SIZE,MOUNTPOINTS
+findmnt -R /sysroot
+
+# Validate expected stateful mountpoints (if configured)
+findmnt /var/lib/mongodb /var/log || true
+
+# Validate effective sizes
+df -h /sysroot /var/lib/mongodb /var/log
+```

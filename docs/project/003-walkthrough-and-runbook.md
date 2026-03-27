@@ -2,7 +2,7 @@
 
 **Part A** walks through the bootc-testboot flow from prerequisites to verifying an EC2 instance and adding a new app. **Part B** is the production runbook for upgrades, rollbacks, debugging, and emergencies on bootc-managed hosts—use it as the single source of truth for operator commands (the short upgrade/rollback steps that used to appear only in the walkthrough are superseded by Part B).
 
-### Contents
+## Table of Contents
 
 - [Part A — Walkthrough](#part-a--walkthrough)
   - [1. Prerequisites](#1-prerequisites)

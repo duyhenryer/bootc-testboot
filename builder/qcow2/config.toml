@@ -1,6 +1,7 @@
-# bootc-image-builder customizations for raw disk image
-# Raw images are full block copies — keep partitions small so CI can package the
-# artifact; attach separate volumes for MongoDB data in production (see AMI config).
+# bootc-image-builder shared customizations for qcow2/raw/anaconda-iso
+# Filesystem profile: portable-minimal
+# Intent: keep baseline artifacts small and portable across local/lab workflows.
+# Note: builder/raw/config.toml and builder/anaconda-iso/config.toml symlink here.
 # Docs: https://github.com/osbuild/bootc-image-builder#-build-config
 
 [[customizations.user]]

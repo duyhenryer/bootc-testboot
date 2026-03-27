@@ -233,6 +233,7 @@ Read these first to understand how bootc works.
 | [010](docs/bootc/010-ubuntu-bootc-status.md) | Ubuntu bootc Status |
 | [011](docs/bootc/011-bootc-vision.md) | bootc Vision |
 | [012](docs/bootc/012-bootc-limitations.md) | bootc Limitations |
+| [013](docs/bootc/013-bootc-image-builder-guide.md) | bootc-image-builder for Newbies |
 
 ### Our Project (`docs/project/`)
 

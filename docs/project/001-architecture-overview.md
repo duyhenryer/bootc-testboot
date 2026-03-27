@@ -2,6 +2,16 @@
 
 A high-level visual guide to how bootc (bootable containers) fits into the stack and how a single Containerfile drives kernel, userspace, apps, and configs through to deployed EC2 instances.
 
+## Table of Contents
+
+- [System Architecture](#system-architecture)
+- [Build Pipeline](#build-pipeline)
+- [Filesystem Model](#filesystem-model)
+- [Upgrade Lifecycle](#upgrade-lifecycle)
+- [App Deployment Model](#app-deployment-model)
+- [Production Vision](#production-vision)
+- [References](#references)
+
 ---
 
 ## System Architecture
@@ -39,6 +49,10 @@ flowchart TB
         PID1 --> ROOT["OSTree deployment root"]
     end
 ```
+
+*Equivalent diagram (SVG, tldraw-style layout):*
+
+![System architecture](../images/project/architecture/001-system-architecture.svg)
 
 ### Layers from One Containerfile
 
@@ -97,6 +111,10 @@ flowchart LR
     end
 ```
 
+*Equivalent diagram (SVG, tldraw-style layout):*
+
+![Build pipeline](../images/project/architecture/002-build-pipeline.svg)
+
 ### Decoupled Build
 
 ```
@@ -148,8 +166,12 @@ flowchart LR
     svcs -->|"COPY / "| yumrepo
     apps -->|"COPY / "| systemd
     apps -->|"COPY / "| tmpfiles
-    share -.->|"ln -sf"| etclink
+        share -.->|"ln -sf"| etclink
 ```
+
+*Equivalent diagram (SVG, tldraw-style layout):*
+
+![Rootfs overlay mapping](../images/project/architecture/003-rootfs-overlay.svg)
 
 | Source Layer | What It Provides | Runtime Location |
 |-------------|------------------|-----------------|
@@ -188,6 +210,10 @@ flowchart TB
     end
 ```
 
+*Equivalent diagram (SVG, tldraw-style layout):*
+
+![Filesystem model](../images/project/architecture/004-filesystem-model.svg)
+
 | Path | Build-time | Runtime | Behavior |
 |------|------------|---------|----------|
 | `/usr` | Mutable | **Read-only** | OS content, binaries, immutable configs in `/usr/share/` |
@@ -208,6 +234,10 @@ stateDiagram-v2
     Apply --> Reboot: New bootloader entry created
     Reboot --> [*]: New deployment active
 ```
+
+*Equivalent diagram (SVG, tldraw-style layout):*
+
+![Upgrade lifecycle](../images/project/architecture/005-upgrade-lifecycle.svg)
 
 ### Phased Upgrade (Production-Safe)
 
@@ -251,6 +281,10 @@ flowchart LR
     end
 ```
 
+*Equivalent diagram (SVG, tldraw-style layout):*
+
+![App deployment model](../images/project/architecture/006-app-deployment.svg)
+
 ### Adding a New App
 
 1. Create `repos/newapp/` with `main.go`, `go.mod`
@@ -291,6 +325,10 @@ flowchart TB
     POC --> Production
     Production --> Targets
 ```
+
+*Equivalent diagram (SVG, tldraw-style layout):*
+
+![Production vision](../images/project/architecture/007-production-vision.svg)
 
 ### Scaling the POC
 

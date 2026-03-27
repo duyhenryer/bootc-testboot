@@ -1,4 +1,6 @@
 # bootc-image-builder customizations for GCE (Google Compute Engine)
+# Filesystem profile: cloud-minimal
+# Intent: keep boot image small and attach Persistent Disk for stateful data.
 # Docs: https://github.com/osbuild/bootc-image-builder#-build-config
 #
 # Build with --type raw, then tar.gz for GCE:
