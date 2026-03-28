@@ -12,7 +12,7 @@ name = "devops"
 key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDiJ7hHdPtK//86y6wFExtQ7cxC7VL88hoLKHuMCnckj duyne"
 # SHA-512 crypt for local console login (Xen / vSphere / serial). SSH still uses key-only unless you change sshd.
 # Lab plaintext documented in builder/README.md — rotate for production; regenerate hash with: openssl passwd -6
-password = "$6$7kYS5QZdr9WLw8h7$WX4vG7vfNCdEr//HtFbtOcwiFaCkYu3SmJSz.ELOpE.kETnhnnlSDBZN62SFlVrUBKUFoMywwAxhrI6ZY8XJl0"
+password = "$6$pyydk84XRidAamvj$D.HAOGpRBhD6B34VzCoottALddBRAEsmcmj02mYMQ7D0.iIf7HsV0TuBZBWegEhRr15kFzDwIJPL2DSTixhie0"
 groups = ["wheel"]
 
 [[customizations.filesystem]]
