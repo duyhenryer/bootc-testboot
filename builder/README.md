@@ -68,7 +68,7 @@ Standard `bootc-image-builder` [Blueprint](https://github.com/osbuild/blueprint)
 
 > **Note:** OVA/VMDK is for **VMware vSphere / ESXi only**. For Xen Orchestra (XCP-ng), use the **QCOW2** artifact — OVA imports into Xen strip VMware-specific hardware (VmxNet3, vmx-19 hardware version) and can cause boot and SELinux initialisation issues. See [docs/project/009-selinux-mongodb.md](../docs/project/009-selinux-mongodb.md) §2 for details.
 
-**Lab console password (plaintext, documented only — not in `config.toml`):** `BootcOvaConsoleDevAb` (20 letters, mixed case). Use user **`devops`** on the vSphere VM console. **Change after first login** (`passwd`) or replace the hash before production builds.
+**Lab console password (plaintext, documented only — not in `config.toml`):** `Bootc@2025` (10 characters). Use user **`devops`** on the vSphere VM console. **Change after first login** (`passwd`) or replace the hash before production builds.
 
 To change the password, generate a new SHA-512 hash and update [`vmdk/config.toml`](vmdk/config.toml):
 

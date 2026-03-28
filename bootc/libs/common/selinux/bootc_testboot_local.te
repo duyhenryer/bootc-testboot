@@ -1,0 +1,27 @@
+# Project-wide local SELinux policy fixes for bootc-testboot.
+#
+# This module covers system-level denials triggered by our tmpfiles.d
+# configurations on CentOS Stream 9 / Fedora that the base SELinux
+# policy does not grant.
+#
+# Denials addressed here:
+#
+#   systemd_tmpfile_t self:capability sys_resource
+#     Triggered by systemd-tmpfiles creating /var/lib/mongodb (and other
+#     /var dirs) on a dedicated EXT4 partition. CAP_SYS_RESOURCE is needed
+#     to override ext4 reserved-block limits when setting ownership via
+#     the 'd' directive in tmpfiles.d fragments.
+#
+# Compiled in the mongodb-selinux-builder stage and installed at build
+# time via semodule (priority 100).
+
+module bootc_testboot_local 1.0;
+
+require {
+    type systemd_tmpfile_t;
+    class capability sys_resource;
+}
+
+# systemd-tmpfiles: allow CAP_SYS_RESOURCE for creating /var directories
+# on dedicated EXT4 partitions with reserved blocks.
+allow systemd_tmpfile_t self:capability sys_resource;
