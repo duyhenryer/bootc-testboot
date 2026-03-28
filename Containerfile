@@ -111,7 +111,8 @@ RUN rm -f /var/log/mongodb/mongod.log && \
     /var/cache/{dnf,ldconfig,libdnf5} \
     /var/home/appuser/.bash* \
     /var/roothome/buildinfo \
-    /run/cloud-init /run/mongodb /run/rhsm
+    /run/cloud-init /run/mongodb /run/rhsm \
+    /tmp/*
 
 # --- Validate ---
 RUN bootc container lint --fatal-warnings || exit 1
