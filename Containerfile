@@ -29,10 +29,10 @@ RUN git clone https://github.com/mongodb/mongodb-selinux.git /tmp/mongodb-selinu
     install -D -m 0644 build/targeted/mongodb.pp /mongodb.pp && \
     rm -rf /tmp/mongodb-selinux
 # Supplemental local module: FTDC proc/sysctl/nfs rules not covered upstream.
-COPY bootc/services/mongodb/selinux/mongodb-ftdc-local.te /tmp/mongodb-ftdc-local.te
-RUN checkmodule -M -m -o /tmp/mongodb-ftdc-local.mod /tmp/mongodb-ftdc-local.te && \
-    semodule_package -o /mongodb-ftdc-local.pp -m /tmp/mongodb-ftdc-local.mod && \
-    rm /tmp/mongodb-ftdc-local.te /tmp/mongodb-ftdc-local.mod
+COPY bootc/services/mongodb/selinux/mongodb_ftdc_local.te /tmp/mongodb_ftdc_local.te
+RUN checkmodule -M -m -o /tmp/mongodb_ftdc_local.mod /tmp/mongodb_ftdc_local.te && \
+    semodule_package -o /mongodb-ftdc-local.pp -m /tmp/mongodb_ftdc_local.mod && \
+    rm /tmp/mongodb_ftdc_local.te /tmp/mongodb_ftdc_local.mod
 
 FROM ${IMAGE_ROOT}/base/${BASE_DISTRO}:${BASE_IMAGE_VERSION}
 
