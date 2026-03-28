@@ -28,11 +28,15 @@ RUN git clone https://github.com/mongodb/mongodb-selinux.git /tmp/mongodb-selinu
     make -j"$(nproc)" && \
     install -D -m 0644 build/targeted/mongodb.pp /mongodb.pp && \
     rm -rf /tmp/mongodb-selinux
-# Supplemental local module: FTDC proc/sysctl/nfs rules not covered upstream.
+# Supplemental local modules: rules not covered by base or upstream policy.
 COPY bootc/services/mongodb/selinux/mongodb_ftdc_local.te /tmp/mongodb_ftdc_local.te
+COPY bootc/libs/common/selinux/bootc_testboot_local.te /tmp/bootc_testboot_local.te
 RUN checkmodule -M -m -o /tmp/mongodb_ftdc_local.mod /tmp/mongodb_ftdc_local.te && \
     semodule_package -o /mongodb-ftdc-local.pp -m /tmp/mongodb_ftdc_local.mod && \
-    rm /tmp/mongodb_ftdc_local.te /tmp/mongodb_ftdc_local.mod
+    checkmodule -M -m -o /tmp/bootc_testboot_local.mod /tmp/bootc_testboot_local.te && \
+    semodule_package -o /bootc-testboot-local.pp -m /tmp/bootc_testboot_local.mod && \
+    rm /tmp/mongodb_ftdc_local.te /tmp/mongodb_ftdc_local.mod \
+       /tmp/bootc_testboot_local.te /tmp/bootc_testboot_local.mod
 
 FROM ${IMAGE_ROOT}/base/${BASE_DISTRO}:${BASE_IMAGE_VERSION}
 
@@ -57,7 +61,8 @@ RUN dnf install -y logrotate nginx mongodb-org-server mongodb-mongosh erlang rab
 
 COPY --from=mongodb-selinux-builder /mongodb.pp /usr/share/selinux/targeted/mongodb.pp
 COPY --from=mongodb-selinux-builder /mongodb-ftdc-local.pp /usr/share/selinux/targeted/mongodb-ftdc-local.pp
-# --- SELinux: install MongoDB policy modules at build time (bootc-idiomatic) ---
+COPY --from=mongodb-selinux-builder /bootc-testboot-local.pp /usr/share/selinux/targeted/bootc-testboot-local.pp
+# --- SELinux: install policy modules at build time (bootc-idiomatic) ---
 # semodule writes the compiled policy to /etc/selinux/targeted/policy/ which is
 # preserved across upgrades via the /etc 3-way merge. The kernel reads it at boot.
 # The kernel-load step (semodule final phase) silently fails in a container build
@@ -68,6 +73,8 @@ RUN semodule --priority 200 --store targeted \
       --install /usr/share/selinux/targeted/mongodb.pp || true && \
     semodule --priority 100 --store targeted \
       --install /usr/share/selinux/targeted/mongodb-ftdc-local.pp || true && \
+    semodule --priority 100 --store targeted \
+      --install /usr/share/selinux/targeted/bootc-testboot-local.pp || true && \
     semanage fcontext -a -t mongod_var_lib_t '/var/lib/mongodb(/.*)?' || true
 
 # --- Pre-built app binaries (from output/bin/) ---
