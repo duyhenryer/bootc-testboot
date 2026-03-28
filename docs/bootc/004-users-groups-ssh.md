@@ -9,6 +9,8 @@ A beginner-friendly, deep-dive guide for managing users, groups, and SSH access 
 - [Fedora bootc: Authentication, Users and Groups](https://docs.fedoraproject.org/en-US/bootc/authentication/)
 - [RHEL 10 Image Mode: Managing users, groups, SSH keys, and secrets](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/10/html/using_image_mode_for_rhel_to_build_deploy_and_manage_operating_systems/appendix-managing-users-groups-ssh-keys-and-secrets-in-image-mode-for-rhel)
 
+This guide is kept aligned with the upstream bootc chapter *Users, groups, SSH keys* (first link). Where this repo makes a deliberate exception (e.g. lab console password on VMDK), it is called out explicitly.
+
 ---
 
 ## When Do Credentials Get Injected?
@@ -65,7 +67,7 @@ The `postgresql` package runs `useradd` in its post-install script, modifying `/
 
 **What is the 3-way merge?** When bootc updates the OS image, it compares three things: (1) the *old* image's `/etc`, (2) the *new* image's `/etc`, and (3) the *current machine's* `/etc`. If the machine has modified a file (like `/etc/passwd`), bootc keeps the machine's version to avoid overwriting local changes.
 
-This means: if you install the image and then someone sets a root password (which modifies `/etc/passwd`), any new users added in future image updates will **not** appear on that machine. They end up in `/usr/etc/passwd` (the image default) instead of the machine's `/etc/passwd`.
+This means: if you install the image and then someone sets a root password (which modifies `/etc/passwd`), any new users added in future image updates will **not** appear on that machine. They exist in **`/usr/etc/passwd`** (and related defaults under `/usr/etc/` from the new deployment) — the image-side copy used when `/etc` has not diverged — instead of being merged into the machine's **`/etc/passwd`**.
 
 **Solution:** Prefer mechanisms that do not rely on `/etc/passwd` being the single source of truth, or use techniques that avoid drift.
 
@@ -136,6 +138,8 @@ m appuser wheel
 
 The `m appuser wheel` line adds `appuser` to the `wheel` group (sudo access).
 
+**Upstream note:** Avoid non-root-owned files under **`/usr`** that depend on sysusers-managed identities (except rare cases like setuid binaries, which you should avoid anyway). Mutable identity and data belong under **`/var`** (or paths symlinked there).
+
 ### 3. Static UID/GID Allocation
 
 If you must use package-installed users, allocate static UIDs/GIDs *before* the package runs its post-install scripts:
@@ -156,11 +160,17 @@ EORUN
 
 [nss-altfiles](https://github.com/aperezdc/nss-altfiles) splits system users into `/usr/lib/passwd` and `/usr/lib/group`. Some base images (built by rpm-ostree) use this. If `/etc/passwd` is modified locally, image updates to `/usr/lib/passwd` may not merge as expected. Prefer sysusers.d or `DynamicUser=yes`.
 
+### 5. systemd JSON user records (optional)
+
+[systemd JSON user records](https://systemd.io/USER_RECORD/) are another way to describe users. Unlike `sysusers.d` (which applies at boot and writes into `/etc`), the **canonical** records can live under **`/usr`**: if a later image drops a user record, it disappears from the system — behavior differs from sysusers-managed entries. Prefer `sysusers.d` or `DynamicUser=yes` unless you have a specific reason to use JSON records.
+
 ---
 
 ## SSH Keys: Do NOT Hardcode in Image
 
-**Never bake SSH keys into the container image.** If the image is pushed to a registry (even a private one), anyone with pull access gets the keys. And since `/var/home` is persistent state, you cannot rotate keys by updating the image — existing machines keep the old keys.
+**Never bake SSH private keys or *unexpected* public keys into a generic image** you publish broadly. If the image is pushed to a registry (even a private one), anyone with pull access can inspect layers. And since `/var/home` is persistent state, you cannot rotate keys by updating the image alone — existing machines keep the old keys.
+
+**Exception (this repo):** bootc-image-builder [`config.toml`](../../builder/gce/config.toml) injects an SSH **public** key for `devops` at **disk build** time — that is intentional for artifacts (QCOW2, AMI, VMDK/OVA), not a private key baked into the container layer. See also [builder/README.md](../../builder/README.md) for **VMDK/OVA console password** (lab hash in `builder/vmdk/config.toml`).
 
 Instead, inject SSH keys at one of these stages:
 
@@ -210,7 +220,9 @@ groups = ["wheel"]
 - `key` = the SSH public key (will be placed in `~devops/.ssh/authorized_keys`)
 - `groups` = Linux groups to add the user to (`wheel` = sudo access)
 
-The same config is used in `builder/vmdk/config.toml` and `builder/qcow2/config.toml`.
+The same pattern is used in `builder/qcow2/config.toml`.
+
+**`builder/vmdk/config.toml` (VMDK / OVA)** also sets **`password`** on `devops`: a **crypt(3)** hash (typically SHA-512, e.g. from `openssl passwd -6`). That password is for **local console** login (hypervisor console / serial), not for SSH by default — the base image still has `PasswordAuthentication no` for sshd. See [`builder/README.md`](../../builder/README.md) for the documented lab password and how to rotate the hash.
 
 ### Kickstart / Anaconda (RHEL/Fedora Installs)
 
@@ -249,6 +261,10 @@ users:
 ```
 
 On AWS, you can skip the user-data entirely — cloud-init automatically fetches the EC2 key pair from the instance metadata server and injects it for the default user.
+
+### Custom provisioning (systemd unit / container)
+
+For identity that does not fit cloud-init or static image files, run a **systemd unit** (or container) after boot that talks to your directory or API. **FreeIPA** / LDAP + **sssd** is a common Day-2 pattern (see [Day-2: Credential Rotation](#day-2-credential-rotation)). On Kubernetes-style hosts, some teams use **CRDs and kubelet-managed credentials** to drive user or SSH material — same idea: provision *outside* the immutable `/usr` tree.
 
 ### systemd Credentials (QEMU / Local VMs)
 
@@ -425,17 +441,21 @@ az vm create --name my-vm --image UbuntuLTS --generate-ssh-keys
 
 **How to deploy:** bootc-image-builder creates VMDK or OVA images (`--type vmdk`). This project packages OVA in CI (see `build-artifacts.yml`).
 
-**SSH keys:** Injected via bootc-image-builder `config.toml` at disk image build time. This project's builder configs all inject a `devops` user with an SSH key:
+**Users and credentials** are set in bootc-image-builder `config.toml` at **disk image build** time. A typical `[[customizations.user]]` block includes both **`key`** (SSH public key) and **`password`** (hashed password for console login):
 
 ```toml
-# builder/vmdk/config.toml
+# builder/vmdk/config.toml (excerpt)
 [[customizations.user]]
 name = "devops"
 key = "ssh-ed25519 AAAA... duyne"
+password = "$6$rounds=656000$..."
 groups = ["wheel"]
 ```
 
-**No cloud-init needed** for the initial deployment — keys are baked into the disk image. For Day-2 key management, use Ansible, sssd/LDAP, or re-deploy with an updated config.
+- **SSH:** Use the injected key to log in over the network (password auth is disabled in this project's sshd).
+- **Console / vSphere:** Use the hashed password from `password` for the VM console if you need local login before SSH works. **Lab / CI:** the actual hash and rotation policy for this repo are documented in [builder/README.md](../../builder/README.md) — do not copy secrets from docs into production images.
+
+**No cloud-init needed** for the initial deployment — user material is in the disk image. For Day-2 key management, use Ansible, sssd/LDAP, or re-deploy with an updated config.
 
 ### Bare-metal / QEMU
 
@@ -513,7 +533,7 @@ qemu ... -smbios type=11,value=io.systemd.credential:passwd.hashed-password.root
 
 **What is UID/GID drift?** When a package creates a user with `useradd` without specifying a UID, the system assigns the next available number. If you rebuild the image with packages in a different order, the UID can change. Now the files in `/var` owned by the old UID belong to a different (or nonexistent) user.
 
-**Example:** CentOS Stream 9 `postgresql` uses a [static uid 26](https://gitlab.com/redhat/centos-stream/rpms/postgresql/-/blob/a03cf81d4b9a77d9150a78949269ae52a0027b54/postgresql.spec#L847) — safe. Cockpit's `cockpit-ws` uses a floating UID — risky if it owns persistent state.
+**Example:** CentOS Stream 9 `postgresql` uses a [static uid 26](https://gitlab.com/redhat/centos-stream/rpms/postgresql/-/blob/a03cf81d4b9a77d9150a78949269ae52a0027b54/postgresql.spec#L847) — safe. By contrast, `cockpit-ws` is often created with a **floating** UID ([see `cockpit.spec`](https://gitlab.com/redhat/centos-stream/rpms/cockpit/-/blob/c9s/cockpit.spec)) — risky if that user owns persistent state under `/var`.
 
 **Prevention:**
 1. Prefer `DynamicUser=yes` for services
@@ -581,7 +601,7 @@ How the theory above maps to actual files in this codebase:
 | `base/rootfs/usr/lib/sysusers.d/dhcpcd.conf` | Satisfies `bootc container lint` for dhcpcd package |
 | `base/rootfs/etc/ssh/sshd_config.d/99-hardening.conf` | Disables root login, password auth, limits auth attempts |
 | `builder/gce/config.toml` | Injects `devops` user + SSH key for GCE disk images |
-| `builder/vmdk/config.toml` | Same for VMware VMDK/OVA images |
+| `builder/vmdk/config.toml` | Same for VMware VMDK/OVA images (`key` + hashed `password`; see [builder/README.md](../../builder/README.md)) |
 | `builder/qcow2/config.toml` | Same for QCOW2 images |
 | `base/centos/stream9/Containerfile` | Installs and enables `cloud-init` + `sshd` |
 
@@ -610,12 +630,12 @@ After initial deployment, how do you change SSH keys or passwords?
 
 - [ ] Prefer `DynamicUser=yes` for system services
 - [ ] Use `systemd-sysusers` when you need named system users
-- [ ] **Never** hardcode SSH keys or passwords in the image
+- [ ] **Never** put *private* SSH keys or *undocumented* passwords into a **generic** image you publish; for **artifact builds**, use bootc-image-builder `key` / hashed `password` as documented ([builder/README.md](../../builder/README.md) for this repo's lab VMDK nuance)
 - [ ] Use cloud-init / OS Login / metadata for SSH keys in cloud deployments
 - [ ] Use `bootc install --root-ssh-authorized-keys` for bare-metal
-- [ ] Use bootc-image-builder `customizations.user` for disk images
+- [ ] Use bootc-image-builder `customizations.user` for disk images (`key` and optional hashed `password` for console)
 - [ ] Disable password auth via sshd_config drop-in (`PasswordAuthentication no`)
-- [ ] For passwords, use `mkpasswd --method=sha-512` and inject via kickstart / cloud-init / systemd credential
+- [ ] For interactive passwords (kickstart / cloud-init / QEMU SMBIOS), use `mkpasswd --method=sha-512` — not plaintext in repos
 - [ ] Do not rely on `/etc/passwd` being updated from image on systems that modified it locally
 - [ ] Be aware of UID/GID drift with floating UIDs
 - [ ] Use tmpfiles.d `z`/`Z` for ownership when needed

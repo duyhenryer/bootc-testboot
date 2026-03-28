@@ -1,0 +1,60 @@
+# Supplemental SELinux policy for MongoDB FTDC (Full Time Diagnostic Data Capture)
+#
+# The upstream mongodb/mongodb-selinux module covers the standard RHEL
+# mongod_t domain but does not grant all permissions that FTDC needs to
+# collect system metrics from /proc and /proc/sys, nor does it allow
+# traversal of NFS-related directories on Xen/XCP-ng hosts.
+#
+# Denials addressed here:
+#
+#   mongod_t proc_t:dir          search   -- /proc (diskstats, meminfo, vmstat, stat)
+#   mongod_t proc_t:file         read     -- /proc/* files
+#   mongod_t proc_net_t:dir      search   -- /proc/net
+#   mongod_t proc_net_t:file     read     -- /proc/net/netstat, sockstat, snmp
+#   mongod_t sysctl_fs_t:dir     search   -- /proc/sys/fs
+#   mongod_t sysctl_fs_t:file    read     -- /proc/sys/fs/file-nr (open-fd count)
+#   mongod_t var_lib_nfs_t:dir   search   -- /var/lib/nfs (Xen/XCP-ng NFS SR)
+#
+# Why var_lib_nfs_t: FTDC calls statvfs() on every entry in /proc/mounts.
+# On XCP-ng hosts with NFS Storage Repositories the NFS subsystem exposes
+# /var/lib/nfs paths; mongod_t has no search permission on var_lib_nfs_t
+# so every FTDC collection cycle generates a denial.
+#
+# Compiled by the mongodb-selinux-builder stage (checkpolicy provides
+# checkmodule + semodule_package). Loaded at priority 100 (below the
+# upstream module's priority 200) so upstream rules take precedence.
+
+module mongodb_ftdc_local 1.0;
+
+require {
+    type mongod_t;
+    type proc_t;
+    type proc_net_t;
+    type sysctl_fs_t;
+    type var_lib_nfs_t;
+    class dir  { getattr open read search };
+    class file { getattr open read };
+}
+
+# ---------------------------------------------------------------------------
+# /proc: CPU, memory, disk and vmstat metrics
+# ---------------------------------------------------------------------------
+allow mongod_t proc_t:dir  search;
+allow mongod_t proc_t:file { getattr open read };
+
+# ---------------------------------------------------------------------------
+# /proc/net: network statistics (netstat, sockstat, snmp)
+# ---------------------------------------------------------------------------
+allow mongod_t proc_net_t:dir  search;
+allow mongod_t proc_net_t:file { getattr open read };
+
+# ---------------------------------------------------------------------------
+# /proc/sys/fs: filesystem-level kernel parameters (e.g. file-nr)
+# ---------------------------------------------------------------------------
+allow mongod_t sysctl_fs_t:dir  search;
+allow mongod_t sysctl_fs_t:file { getattr open read };
+
+# ---------------------------------------------------------------------------
+# /var/lib/nfs: Xen/XCP-ng NFS SR host directory (statvfs traversal)
+# ---------------------------------------------------------------------------
+allow mongod_t var_lib_nfs_t:dir search;

@@ -1,4 +1,6 @@
 # bootc-image-builder customizations for AWS AMI
+# Filesystem profile: cloud-minimal
+# Intent: keep root partition small in the image and attach EBS for stateful data.
 # Docs: https://github.com/osbuild/bootc-image-builder#-build-config
 #
 # AWS-specific notes:

@@ -4,6 +4,15 @@ This document explains what happens to your system when you release a new versio
 
 > **Pre-requisite reading:** [003-filesystem-layout.md](../bootc/003-filesystem-layout.md) -- you must understand `/usr`, `/etc`, and `/var` before reading this document.
 
+## Table of Contents
+
+- [1. Immutable Config Strategy](#1-immutable-config-strategy)
+- [2. What Happens During `bootc upgrade`](#2-what-happens-during-bootc-upgrade)
+- [3. Release Scenarios](#3-release-scenarios)
+- [4. Partition Planning](#4-partition-planning)
+- [5. Rollback (Brief)](#5-rollback-brief)
+- [Quick Reference](#quick-reference)
+
 ---
 
 ## 1. Immutable Config Strategy

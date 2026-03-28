@@ -14,6 +14,7 @@ Use this map to pick the right doc and avoid duplicating content across files. *
 | Local testing, test case registry (TC-xx), QEMU, post-deploy audit, troubleshooting | [006-testing-guide-and-registry.md](006-testing-guide-and-registry.md) |
 | `rootfs/` layout, file mapping, add a component | [007-rootfs-overlay-guide.md](007-rootfs-overlay-guide.md) |
 | Verify GHCR after CI (`verify-ghcr-packages.sh`) | [008-ghcr-audit.md](008-ghcr-audit.md) |
+| SELinux: MongoDB FTDC denials, methods explored, build-time policy approach | [009-selinux-mongodb.md](009-selinux-mongodb.md) |
 
 Doc **005** was renamed from `005-manual-deployments.md` to reflect local build plus deployment. **007** (testing guide) absorbed the former **008** (test case registry). **004** runbook is merged into **003**; **005–009** on disk were renumbered to **004–008** (manual → rootfs → GHCR).
 
@@ -27,6 +28,7 @@ Doc **005** was renamed from `005-manual-deployments.md` to reflect local build 
 | **Filesystem theory** (OSTree, `/usr` ro) | [docs/bootc/003-filesystem-layout.md](../bootc/003-filesystem-layout.md) | Project-specific paths: [007](007-rootfs-overlay-guide.md) § Newbie. |
 | **GHCR paths, `verify-ghcr`** | [008-ghcr-audit.md](008-ghcr-audit.md) | [004](004-manual-build-and-deployment.md) keeps the artifact path table for deployers. |
 | **Post-deploy checks / troubleshooting** | [006-testing-guide-and-registry.md](006-testing-guide-and-registry.md) | Single place for long command lists and TC reference. |
+| **SELinux policy — MongoDB FTDC** | [009-selinux-mongodb.md](009-selinux-mongodb.md) | Problem history, methods, and current build-time approach. |
 
 ## Numbering
 

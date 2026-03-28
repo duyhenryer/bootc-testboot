@@ -4,7 +4,7 @@ This document explains how to test your bootc image **locally** before deploying
 
 You no longer need to push to GHCR and deploy a VM just to check if your image works.
 
-### Contents
+## Table of Contents
 
 - [Test summary (all TCs)](#test-summary-all-tcs)
 - [The problem](#the-problem)

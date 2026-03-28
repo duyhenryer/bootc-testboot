@@ -2,6 +2,16 @@
 
 How source files in the repository map to their final locations inside a running bootc VM. This is the single reference for understanding "where does this file end up at runtime?"
 
+## Table of Contents
+
+- [Newbie: `/usr` vs `/etc` vs `/var` (and symlinks)](#newbie-usr-vs-etc-vs-var-and-symlinks)
+- [1. The rootfs/ Convention](#1-the-rootfs-convention)
+- [2. Build-time to Runtime Mapping](#2-build-time-to-runtime-mapping)
+- [3. The Three Layers](#3-the-three-layers)
+- [4. Immutable Config Pattern](#4-immutable-config-pattern)
+- [5. How to Add New Components](#5-how-to-add-new-components)
+- [References](#references)
+
 ## Newbie: `/usr` vs `/etc` vs `/var` (and symlinks)
 
 On a bootc host, treat the layers like this:
@@ -83,6 +93,18 @@ Shared utility scripts and system definitions used by all services and apps.
 | `bootc/services/mongodb/rootfs/usr/libexec/testboot/mongodb-init.sh` | `/usr/libexec/testboot/mongodb-init.sh` | Read-only | Script for replica set init and admin user creation (requires **`mongosh`** from **`mongodb-mongosh`**, installed in the Containerfile) |
 | `bootc/services/mongodb/rootfs/usr/lib/sysusers.d/mongod.conf` | `/usr/lib/sysusers.d/mongod.conf` | Read-only | Creates `mongod` user/group for `bootc container lint` |
 | `bootc/services/mongodb/rootfs/usr/lib/tmpfiles.d/mongodb.conf` | `/usr/lib/tmpfiles.d/mongodb.conf` | Read-only | Creates `/var/lib/mongodb`, `/var/lib/mongodb/tls`, `/var/log/mongodb` at boot |
+The app `Containerfile` compiles both `mongodb.pp` (upstream) and `mongodb-ftdc-local.pp`
+(local FTDC supplement) in a **throwaway build stage** (`mongodb-selinux-builder`) using
+`checkmodule` + `semodule_package`. Only the compiled `.pp` files are copied into the final image;
+`selinux-policy-devel` and `checkpolicy` remain in the builder stage only (keeps `bootc container
+lint` clean). Both modules are installed into the SELinux policy store via `semodule --install` in a
+`RUN` step — **at build time**, not via a runtime service.
+
+> `semanage fcontext -a -t mongod_var_lib_t '/var/lib/mongodb(/.*)? '` is also run at build time.
+> `restorecon /var/lib/mongodb` is deferred to `ExecStartPre` in `mongod.service.d/override.conf`
+> because `/var` does not exist at image build time.
+>
+> See [009-selinux-mongodb.md](009-selinux-mongodb.md) for the full problem history and rationale.
 
 Plus a symlink created in the Containerfile: `/etc/mongod.conf` -> `/usr/share/mongodb/mongod.conf`
 
