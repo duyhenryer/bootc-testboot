@@ -6,6 +6,7 @@ ConditionPathExists=!/var/lib/mongodb/.setup-done
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+Environment=LOG_FILE=/var/log/mongodb/mongodb-setup.log
 ExecStart=/usr/libexec/testboot/mongodb-setup.sh
 
 [Install]
