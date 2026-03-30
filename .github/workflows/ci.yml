@@ -27,8 +27,12 @@ jobs:
         with:
           dockerfile: Containerfile
           failure-threshold: warning
-          # DL3006: tag version, DL3008: pin versions — not applicable to bootc base images
-          ignore: DL3006,DL3008,DL3013,DL3033,DL3041
+          # DL3003: WORKDIR — cd in && chain is fine
+          # DL3006: tag version — base image tag is an ARG
+          # DL3008,DL3013,DL3033,DL3041: pin versions — not applicable to bootc base images
+          # SC2015: A && B || C — intentional || true fallback pattern
+          # SC3009: brace expansion — we use bash, not sh
+          ignore: DL3003,DL3006,DL3008,DL3013,DL3033,DL3041,SC2015,SC3009
 
   # ---------------------------------------------------------------------------
   # ShellCheck — lint all shell scripts
