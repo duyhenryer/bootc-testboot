@@ -6,12 +6,7 @@ ConditionPathExists=!/var/lib/mongodb/.setup-done
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/libexec/testboot/gen-password.sh /var/lib/mongodb/.admin-pw 32
-ExecStart=/usr/libexec/testboot/gen-tls-cert.sh /var/lib/mongodb/tls localhost
-ExecStart=/usr/libexec/testboot/gen-password.sh /var/lib/mongodb/.keyFile 756
-ExecStart=/bin/chmod 0400 /var/lib/mongodb/.keyFile
-ExecStart=/bin/chown -R mongod:mongod /var/lib/mongodb/tls /var/lib/mongodb/.keyFile /var/lib/mongodb/.admin-pw
-ExecStart=/bin/touch /var/lib/mongodb/.setup-done
+ExecStart=/usr/libexec/testboot/mongodb-setup.sh
 
 [Install]
 WantedBy=multi-user.target
