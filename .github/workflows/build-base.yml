@@ -140,3 +140,16 @@ jobs:
           if [ "$VERSION" != "latest" ]; then
             podman push "${REF}:${VERSION}"
           fi
+
+  # ---------------------------------------------------------------------------
+  # Chain: after all base images are pushed, rebuild the app image on top.
+  # This ensures bootc FROM base/<distro>:latest always uses the freshly-built base.
+  # ---------------------------------------------------------------------------
+  trigger-bootc:
+    name: Trigger app image rebuild
+    needs: [build-base]
+    if: github.event_name != 'workflow_call'
+    uses: ./.github/workflows/build-bootc.yml
+    permissions:
+      contents: read
+      packages: write

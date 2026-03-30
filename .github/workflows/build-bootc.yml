@@ -7,8 +7,11 @@ on:
     paths:
       - "Containerfile"
       - "repos/**"
-      - "base/**"
       - "bootc/**"
+      # NOTE: base/** is NOT listed here. When base/ changes, build-base.yml runs
+      # first (its own path trigger), then calls this workflow via workflow_call.
+      # This prevents a race where bootc builds against a stale base image.
+  workflow_call:            # Called by build-base.yml after base images are pushed
   schedule:
     - cron: '0 8 * * 1'   # Weekly Monday 08:00 UTC — rebuild app image after base refresh
   workflow_dispatch:
