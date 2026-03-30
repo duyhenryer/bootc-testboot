@@ -14,10 +14,11 @@ on:
   workflow_dispatch:
     inputs:
       base_distro:
-        description: 'Base distro to build on'
-        default: 'centos-stream9'
+        description: 'Base distro to build (default: all)'
+        default: 'all'
         type: choice
         options:
+          - all
           - centos-stream9
           - centos-stream10
           - fedora-40
@@ -50,10 +51,16 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             PLATFORMS="${{ inputs.platforms }}"
-            DISTROS=("${{ inputs.base_distro }}")
+            DISTRO="${{ inputs.base_distro }}"
           else
             PLATFORMS="linux/amd64"
+            DISTRO="all"
+          fi
+
+          if [ "$DISTRO" = "all" ] || [ -z "$DISTRO" ]; then
             DISTROS=("centos-stream9" "centos-stream10" "fedora-40" "fedora-41")
+          else
+            DISTROS=("$DISTRO")
           fi
 
           DISTROS_CSV=$(IFS=','; echo "${DISTROS[*]}")
