@@ -1,16 +1,24 @@
 # Project-wide local SELinux policy fixes for bootc-testboot.
 #
-# This module covers system-level denials triggered by our tmpfiles.d
+# This module covers system-level denials triggered by our service
 # configurations on CentOS Stream 9 / Fedora that the base SELinux
 # policy does not grant.
 #
 # Denials addressed here:
 #
-#   systemd_tmpfile_t self:capability sys_resource
+#   systemd_tmpfiles_t self:capability sys_resource
 #     Triggered by systemd-tmpfiles creating /var/lib/mongodb (and other
 #     /var dirs) on a dedicated EXT4 partition. CAP_SYS_RESOURCE is needed
 #     to override ext4 reserved-block limits when setting ownership via
 #     the 'd' directive in tmpfiles.d fragments.
+#
+#   init_t var_lib_t:lnk_file { unlink create read }
+#   init_t var_log_t:lnk_file { unlink create read }
+#     Triggered by systemd PID 1 managing StateDirectory= and LogsDirectory=
+#     for services using static User= (e.g. User=hello). systemd creates,
+#     reads, and removes symlinks under /var/lib/ and /var/log/ when
+#     transitioning service directory ownership or cleaning up from a
+#     previous DynamicUser= configuration.
 #
 # Compiled in the mongodb-selinux-builder stage and installed at build
 # time via semodule (priority 100).
@@ -19,9 +27,18 @@ module bootc_testboot_local 1.0;
 
 require {
     type systemd_tmpfiles_t;
+    type init_t;
+    type var_lib_t;
+    type var_log_t;
     class capability sys_resource;
+    class lnk_file { create read unlink };
 }
 
 # systemd-tmpfiles: allow CAP_SYS_RESOURCE for creating /var directories
 # on dedicated EXT4 partitions with reserved blocks.
 allow systemd_tmpfiles_t self:capability sys_resource;
+
+# systemd (init_t): manage StateDirectory=/LogsDirectory= symlinks
+# under /var/lib/ and /var/log/ for services with static User=.
+allow init_t var_lib_t:lnk_file { create read unlink };
+allow init_t var_log_t:lnk_file { create read unlink };

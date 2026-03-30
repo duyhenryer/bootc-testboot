@@ -28,7 +28,14 @@ approach is the correct one for an image-based OS.
   - [5.3 First-boot restorecon](#53-first-boot-restorecon)
   - [5.4 Service ordering after the refactor](#54-service-ordering-after-the-refactor)
 - [6. Verification Checklist](#6-verification-checklist)
-- [7. References](#7-references)
+- [7. Case Studies — SELinux Denials Encountered and Resolved](#7-case-studies--selinux-denials-encountered-and-resolved)
+  - [Case 1: restorecon fails as mongod user](#case-1-restorecon-fails-as-mongod-user)
+  - [Case 2: systemd-tmpfiles denied CAP_SYS_RESOURCE](#case-2-systemd-tmpfiles-denied-cap_sys_resource)
+  - [Case 3: DynamicUser to static User migration](#case-3-dynamicuseryes-to-static-user-migration--init_t-denied-unlink)
+  - [Case 4: Wrong SELinux type name — silent failure](#case-4-wrong-selinux-type-name--silent-failure)
+  - [Case 5: MongoDB localhost exception rejects getUser()](#case-5-mongodb-localhost-exception-rejects-getuser)
+  - [How to read an AVC denial](#how-to-read-an-avc-denial)
+- [8. References](#8-references)
 
 ---
 
@@ -444,7 +451,242 @@ getenforce
 
 ---
 
-## 7. References
+## 7. Case Studies — SELinux Denials Encountered and Resolved
+
+Real-world SELinux issues hit during development of this project, documented as learning
+references. Each case follows the same structure: symptom (AVC log), root cause, fix, and lesson.
+
+### Case 1: `restorecon` fails as `mongod` user
+
+**Symptom:**
+
+```
+mongod.service: Control process exited, code=exited, status=255
+restorecon[5179]: Could not set context
+restorecon[5179]: Could not read /var/lib/mongodb
+```
+
+**AVC:** None — this was a permission error, not an SELinux denial. `restorecon` ran as the
+`mongod` user (inherited from the upstream `mongod.service` `User=mongod`) and had no permission
+to read or set SELinux extended attributes.
+
+**Root cause:** The `ExecStartPre=/usr/sbin/restorecon -RFv /var/lib/mongodb` in
+`mongod.service.d/override.conf` ran as the service user, not root. `restorecon` needs root
+privileges (or `CAP_MAC_ADMIN`) to set SELinux contexts.
+
+**Fix:** Prefix with `+` to run as root:
+
+```ini
+ExecStartPre=+/usr/sbin/restorecon -Rv /var/lib/mongodb
+```
+
+Also removed the `-F` flag (force full context reset including user/role/range) which is
+unnecessary — we only need the type label (`mongod_var_lib_t`).
+
+**Lesson:** In systemd, `ExecStartPre=` inherits the `User=` from `[Service]`. If the command
+needs root, prefix with `+`. The `+` prefix is documented in `systemd.service(5)` under
+"Special executable prefixes".
+
+---
+
+### Case 2: `systemd-tmpfiles` denied `CAP_SYS_RESOURCE`
+
+**Symptom:**
+
+```
+audit: type=1400 avc: denied { sys_resource } for comm="systemd-tmpfile"
+  capability=24 scontext=system_u:system_r:systemd_tmpfiles_t:s0
+  tclass=capability permissive=0
+```
+
+**Root cause:** `systemd-tmpfiles` creates directories under `/var/lib/mongodb` on a dedicated
+EXT4 partition (`xvda5`, 50 GiB configured in `builder/vmdk/config.toml`). EXT4 reserves 5% of
+blocks by default. `CAP_SYS_RESOURCE` (capability 24) is needed to override the reserved-block
+limit when changing directory ownership via the `d` directive in `tmpfiles.d` fragments.
+
+The CentOS Stream 9 base SELinux policy for `systemd_tmpfiles_t` does not grant this capability.
+
+**Fix:** Added to `bootc_testboot_local.te`:
+
+```te
+allow systemd_tmpfiles_t self:capability sys_resource;
+```
+
+**First attempt (failed):** The initial `.te` file used `systemd_tmpfile_t` (no **s**). The actual
+type on CentOS Stream 9 is `systemd_tmpfiles_t` (with **s**). The module compiled and installed
+without error, but the rule had no effect because it targeted a non-existent type. Always copy the
+exact type name from the AVC `scontext=` field.
+
+**Lesson:** SELinux type names are exact strings — one letter difference means the rule silently
+does nothing. Always copy-paste the type directly from the AVC log, never guess.
+
+---
+
+### Case 3: `DynamicUser=yes` to static `User=` migration — `init_t` denied `unlink`
+
+**Symptom:**
+
+```
+audit: type=1400 avc: denied { unlink } for comm="(hello)" name="hello"
+  dev="xvda6" scontext=system_u:system_r:init_t:s0
+  tcontext=system_u:object_r:var_lib_t:s0 tclass=lnk_file permissive=0
+```
+
+Service exits with `status=238/STATE_DIRECTORY` and crash-loops every 5 seconds.
+
+**Root cause:** The hello service was migrated from `DynamicUser=yes` to `User=hello` (static
+user via `sysusers.d`). The migration created an incompatible `/var` state:
+
+1. **Old image** (`DynamicUser=yes`): systemd creates private directories and symlinks:
+   ```
+   /var/lib/private/bootc-testboot/hello/   ← real directory (owned by dynamic UID)
+   /var/lib/bootc-testboot/hello            ← symlink → private/...
+   ```
+
+2. **New image** (`User=hello`): systemd needs to remove the symlink and use the path as a
+   regular directory. It calls `unlink()` on the symlink.
+
+3. **SELinux blocks it**: `init_t` (systemd PID 1) has no `unlink` permission on
+   `var_lib_t:lnk_file` in the CentOS Stream 9 base policy.
+
+4. **systemd gives up**: exit code `238/STATE_DIRECTORY` = "failed to set up StateDirectory".
+
+**Immediate fix on the running VM** (while waiting for the next image build):
+
+```bash
+sudo systemctl stop hello
+sudo rm -f /var/lib/bootc-testboot/hello /var/log/bootc-testboot/hello
+sudo mkdir -p /var/lib/bootc-testboot/hello /var/log/bootc-testboot/hello
+sudo chown hello:hello /var/lib/bootc-testboot/hello /var/log/bootc-testboot/hello
+sudo systemctl start hello
+```
+
+This works because the interactive shell runs as `unconfined_t`, which has full permissions.
+Only `init_t` (systemd PID 1) was blocked.
+
+**Permanent fix:** Added to `bootc_testboot_local.te`:
+
+```te
+allow init_t var_lib_t:lnk_file { create read unlink };
+allow init_t var_log_t:lnk_file { create read unlink };
+```
+
+**Lesson:** Changing `DynamicUser=yes` to `User=<static>` is not a transparent swap — it changes
+how systemd manages `StateDirectory=` and `LogsDirectory=` under `/var`. On a bootc system where
+`/var` persists across upgrades, the old `DynamicUser` directory structure (private dirs +
+symlinks) remains and must be cleaned up. Plan for this transition whenever migrating a service
+from dynamic to static user.
+
+---
+
+### Case 4: Wrong SELinux type name — silent failure
+
+**Symptom:** The `sys_resource` denial (Case 2) persisted after deploying an image that included
+the "fix". No build error, no runtime error — the denial just kept appearing.
+
+**Root cause:** The `.te` file declared `type systemd_tmpfile_t` but the actual SELinux type on
+CentOS Stream 9 is `systemd_tmpfiles_t`. `checkmodule` compiled it without error because the
+`require {}` block introduces the type if it doesn't exist in the policy — it's a declaration,
+not a lookup. The compiled module installed successfully, but the `allow` rule targeted a type
+that no process runs as.
+
+**Fix:** Changed `systemd_tmpfile_t` → `systemd_tmpfiles_t` (matching the AVC `scontext=` field
+exactly).
+
+**Lesson:** The `require {}` block in a `.te` file does NOT validate that the type exists in the
+running policy. It silently creates a new type if needed. This means:
+
+- A typo in a type name compiles and installs without error
+- The rule has no effect because no process runs in the misspelled type
+- The only symptom is that the original denial persists
+
+**Prevention:** The CI pipeline now includes a `selinux-check` job that compiles all `.te` files
+on a CentOS Stream 9 container image. While this doesn't catch type-name typos (since `require`
+auto-declares), it does catch syntax errors. For type-name validation, always cross-reference
+with `ausearch -m AVC` output from a real deployment.
+
+---
+
+### Case 5: MongoDB localhost exception rejects `getUser()`
+
+**Symptom:**
+
+```
+MongoServerError: not authorized on admin to execute command
+```
+
+`mongodb-init.service` failed. MongoDB was running, replica set was initialized, but the admin
+user was never created.
+
+**Root cause:** The init script called `adminDb.getUser("admin")` before `createUser()` to check
+if the user already existed. MongoDB's **localhost exception** (the mechanism that allows creating
+the first user without credentials on a fresh deployment) only permits `createUser` on the
+`admin` database — it does NOT permit `getUser`, `listUsers`, or any other command.
+
+The script checked for the user's existence (blocked), then never reached the `createUser` call.
+
+**Partial-state trap:** If `rs.initiate()` succeeded on a previous boot but `createUser` failed,
+the `.rs-initialized` flag was never written. On the next reboot the service re-ran, but the
+localhost exception had timed out (10-minute window), making recovery impossible without manual
+intervention.
+
+**Fix:** Call `createUser` directly and catch error code `51003` ("user already exists"):
+
+```javascript
+try {
+  adminDb.createUser({ user: "admin", pwd: pw, roles: ["root"] });
+} catch(e) {
+  if (e.code === 51003) {
+    print("INIT: admin user already exists, skipping");
+  } else {
+    throw e;
+  }
+}
+```
+
+**Lesson:** MongoDB's localhost exception is narrower than most documentation implies. It only
+allows `createUser` — not `getUser`, not `listUsers`, not `authenticate`. Design init scripts
+to attempt the operation directly and handle "already exists" errors, rather than checking first.
+This pattern is also more resilient to partial-state recovery.
+
+---
+
+### How to read an AVC denial
+
+For future reference, every AVC log follows this structure:
+
+```
+avc: denied { PERMISSION } for pid=PID comm="PROCESS"
+  name="FILENAME" dev="DEVICE"
+  scontext=USER:ROLE:SOURCE_TYPE:LEVEL
+  tcontext=USER:ROLE:TARGET_TYPE:LEVEL
+  tclass=OBJECT_CLASS permissive=0|1
+```
+
+| Field | What it means | Example |
+|-------|--------------|---------|
+| `{ PERMISSION }` | The operation that was denied | `{ unlink }`, `{ search }`, `{ sys_resource }` |
+| `comm="..."` | Process name | `"mongod"`, `"(hello)"`, `"systemd-tmpfile"` |
+| `scontext=...SOURCE_TYPE...` | SELinux type of the **process** | `init_t`, `mongod_t`, `systemd_tmpfiles_t` |
+| `tcontext=...TARGET_TYPE...` | SELinux type of the **target object** | `var_lib_t`, `proc_t`, `sysctl_fs_t` |
+| `tclass=` | Object class (file, dir, capability, lnk_file) | `dir`, `file`, `lnk_file`, `capability` |
+| `permissive=0` | `0` = actually blocked; `1` = logged only | `0` means this broke something |
+
+The fix is always an `allow` rule in this form:
+
+```te
+allow SOURCE_TYPE TARGET_TYPE:OBJECT_CLASS { PERMISSION };
+```
+
+For capabilities (where the process grants itself a privilege):
+
+```te
+allow SOURCE_TYPE self:capability { PERMISSION };
+```
+
+---
+
+## 8. References
 
 [^1]: Red Hat — *How image mode for RHEL improves security* (2025).
   The article explains how immutability and SELinux enforcement layer together in image-mode
