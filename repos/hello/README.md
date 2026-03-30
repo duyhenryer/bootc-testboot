@@ -11,4 +11,4 @@ Small HTTP service (`/` JSON, `/health`). Logging uses [`log/slog`](https://pkg.
 
 On the bootc image, `hello.service` sets `LOG_FILE=/var/log/bootc-testboot/hello/hello.log` and `LogsDirectory=bootc-testboot/hello` so the dynamic service user can write without root.
 
-See [docs/project/006-testing-guide-and-registry.md](../../docs/project/006-testing-guide-and-registry.md) for journal vs files and logrotate.
+See [docs/project/004-testing-guide.md](../../docs/project/004-testing-guide.md) for journal vs files and logrotate.

@@ -66,7 +66,7 @@ Standard `bootc-image-builder` [Blueprint](https://github.com/osbuild/blueprint)
 
 [`vmdk/config.toml`](vmdk/config.toml) sets a **`password`** field (SHA-512 crypt) on the `devops` user so you can **log in on the local console** (vSphere VM console, serial) when no SSH is available yet. **SSH still uses the SSH key** from the same `[[customizations.user]]` block; [`PasswordAuthentication` is disabled in the base image](../base/rootfs/etc/ssh/sshd_config.d/99-hardening.conf), so remote SSH with a password is not enabled unless you add a separate `sshd` drop-in.
 
-> **Note:** OVA/VMDK is for **VMware vSphere / ESXi only**. For Xen Orchestra (XCP-ng), use the **QCOW2** artifact — OVA imports into Xen strip VMware-specific hardware (VmxNet3, vmx-19 hardware version) and can cause boot and SELinux initialisation issues. See [docs/project/009-selinux-mongodb.md](../docs/project/009-selinux-mongodb.md) §2 for details.
+> **Note:** OVA/VMDK is for **VMware vSphere / ESXi only**. For Xen Orchestra (XCP-ng), use the **QCOW2** artifact — OVA imports into Xen strip VMware-specific hardware (VmxNet3, vmx-19 hardware version) and can cause boot and SELinux initialisation issues. See [docs/project/006-selinux-reference.md](../docs/project/006-selinux-reference.md) §2 for details.
 
 **Lab console password (plaintext, documented only — not in `config.toml`):** `Bootc@2025` (10 characters). Use user **`devops`** on the vSphere VM console. **Change after first login** (`passwd`) or replace the hash before production builds.
 
@@ -79,7 +79,7 @@ openssl passwd -6
 
 **Same password on every VM** built from the same `config.toml` — acceptable for lab; rebuild after changing the hash to revoke the old one.
 
-**SELinux / FTDC:** The upstream [mongodb/mongodb-selinux](https://github.com/mongodb/mongodb-selinux) policy module and a local supplemental module (`mongodb-ftdc-local`) are both compiled in a throwaway build stage and **installed into the image at build time** via `semodule` in the Containerfile. There is no runtime `semodule` service. After deploying a new disk image, confirm with `semodule -l | grep mongodb` — you should see both `mongodb` and `mongodb_ftdc_local`. For the full history and rationale see [docs/project/009-selinux-mongodb.md](../docs/project/009-selinux-mongodb.md).
+**SELinux / FTDC:** The upstream [mongodb/mongodb-selinux](https://github.com/mongodb/mongodb-selinux) policy module and a local supplemental module (`mongodb-ftdc-local`) are both compiled in a throwaway build stage and **installed into the image at build time** via `semodule` in the Containerfile. There is no runtime `semodule` service. After deploying a new disk image, confirm with `semodule -l | grep mongodb` — you should see both `mongodb` and `mongodb_ftdc_local`. For the full history and rationale see [docs/project/006-selinux-reference.md](../docs/project/006-selinux-reference.md).
 
 ### `ova/bootc-testboot.ovf`
 

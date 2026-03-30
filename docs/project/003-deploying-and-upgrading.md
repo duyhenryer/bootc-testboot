@@ -1,27 +1,251 @@
-# Manual build and VM deployment
+# Deploying and Upgrading
 
-The CI pipeline generates disk images (AMI, QCOW2, VMDK, etc.) and packages them into OCI containers on GitHub Container Registry (GHCR). This document explains how to obtain those disk images—build them locally from the bootc OCI image, or pull a CI-built artifact from GHCR—and deploy them to your cloud environment.
+Covers the full lifecycle: building disk images, deploying to cloud/on-prem targets, upgrading running systems, and day-2 operations.
 
-You have **two options** for every deployment target:
-
-- **Option A** — Build the disk image locally from the bootc OCI image (you control the config)
-- **Option B** — Pull a pre-built disk image from GHCR (built by CI)
-
-Currently tested end-to-end: **AWS EC2** and **Google Cloud Platform**. VMware and bare metal sections are included for reference but not yet validated.
+> **Pre-requisite reading:** [001-architecture-overview.md](001-architecture-overview.md) for the
+> two-layer image design and [002-building-images.md](002-building-images.md) for how to build images.
 
 ## Table of Contents
 
-- [Local build prerequisites (Option A)](#local-build-prerequisites-option-a)
-- [1. How Artifacts Work](#1-how-artifacts-work)
-- [2. bootc-image-builder Reference](#2-bootc-image-builder-reference)
-- [3. Deploying to AWS EC2 (AMI)](#3-deploying-to-aws-ec2-ami)
-- [4. Deploying to Google Cloud Platform (GCE)](#4-deploying-to-google-cloud-platform-gce)
-- [5. Deploying to VMware (VMDK / OVA)](#5-deploying-to-vmware-vmdk--ova)
-- [6. Bare Metal (Anaconda ISO)](#6-bare-metal-anaconda-iso)
-- [7. Adding New Deployment Targets](#7-adding-new-deployment-targets)
-- [8. Running QCOW2 Locally](#8-running-qcow2-locally)
-- [9. Upgrading a Running VM (`bootc upgrade`)](#9-upgrading-a-running-vm-bootc-upgrade)
-- [10. Tips and Checklist](#10-tips-and-checklist)
+- [Part A -- Getting Started](#part-a--getting-started)
+- [Part B -- Artifacts and bootc-image-builder](#part-b--artifacts-and-bootc-image-builder)
+- [Part C -- Deployment Targets](#part-c--deployment-targets)
+- [Part D -- Upgrading a Running System](#part-d--upgrading-a-running-system)
+- [Part E -- Release Scenarios](#part-e--release-scenarios)
+- [Part F -- Operations and Debugging](#part-f--operations-and-debugging)
+- [Part G -- Partition Planning](#part-g--partition-planning)
+- [Tips and Checklist](#tips-and-checklist)
+- [Quick Reference](#quick-reference)
+
+---
+
+## Part A -- Getting Started
+
+## 1. Prerequisites
+
+Before starting, ensure you have:
+
+| Requirement | Details |
+|-------------|---------|
+| **AWS account** | With permissions for EC2, S3, IAM |
+| **EC2 builder instance** | For AMI creation: **t3.large** or larger, with **podman** installed, running as root |
+| **VM Import service role** | Configured for S3/EC2 import (see [AWS VM Import prerequisites](https://docs.aws.amazon.com/vm-import/latest/userguide/vmie_prereqs.html)) |
+| **S3 bucket** | For bootc-image-builder intermediate artifacts |
+| **Go 1.25+** | For building apps locally (`go version`) |
+| **GitHub account** | With access to GitHub Container Registry (GHCR) |
+
+---
+
+## 2. Clone Repo and Explore Structure
+
+```bash
+git clone https://github.com/duyhenryer/bootc-testboot.git
+cd bootc-testboot
+```
+
+### Project structure
+
+```
+bootc-testboot/
+├── base/
+│   ├── rootfs/                   # Base OS config overlay (SSH, sysctl, systemd)
+│   ├── centos/stream9/Containerfile
+│   ├── centos/stream10/Containerfile
+│   ├── fedora/40/Containerfile
+│   └── fedora/41/Containerfile
+├── bootc/
+│   ├── libs/common/rootfs/       # Shared libraries and scripts
+│   ├── apps/hello/rootfs/        # App config overlay (systemd unit, tmpfiles)
+│   ├── services/nginx/rootfs/    # nginx config overlay
+│   ├── services/mongodb/rootfs/  # MongoDB config overlay
+│   ├── services/valkey/rootfs/   # Valkey config overlay
+│   └── services/rabbitmq/rootfs/ # RabbitMQ config overlay (x86_64 only)
+├── repos/
+│   └── hello/                    # Go HTTP hello world
+│       ├── main.go
+│       ├── go.mod
+│       └── main_test.go
+├── output/                       # (gitignored) build artifacts
+│   └── bin/                      # pre-built Go binaries
+├── builder/                      # bootc-image-builder configs (per format)
+│   ├── ami/config.toml
+│   ├── gce/config.toml
+│   ├── qcow2/config.toml
+│   ├── vmdk/config.toml
+│   ├── ova/bootc-testboot.ovf
+│   └── README.md
+├── .github/workflows/
+│   ├── build-base.yml            # Base image CI (weekly/manual)
+│   ├── build-bootc.yml           # App image CI (push to main)
+│   ├── build-artifacts.yml       # Disk artifact generation (manual dispatch)
+│   └── ci.yml                    # PR checks (build, lint, test)
+├── Containerfile                 # Layer 2: app image
+└── Makefile                      # Local dev targets (apps/test/build/lint/clean)
+```
+
+---
+
+## 3. Run Tests Locally
+
+```bash
+make test
+```
+
+**Expected output:**
+
+```
+==> Testing repos/hello/
+=== RUN   TestHandleRoot
+--- PASS: TestHandleRoot (0.00s)
+=== RUN   TestHandleHealth
+--- PASS: TestHandleHealth (0.00s)
+PASS
+ok      hello   0.002s
+```
+
+---
+
+## 4. Build bootc Image
+
+```bash
+make build
+```
+
+This runs two steps automatically:
+
+1. **`make apps`** — compiles all Go apps under `repos/*/` to `output/bin/` (static binaries, CGO disabled).
+2. **`podman build`** — assembles the OS image from the base OCI image, copying pre-built binaries + `bootc/apps/*/rootfs/` and `bootc/services/*/rootfs/` overlays.
+
+**Expected output:**
+
+```
+==> Building hello
+STEP 1/14: FROM quay.io/fedora/fedora-bootc:41
+...
+STEP 14/14: RUN bootc container lint
+COMMIT ghcr.io/duyhenryer/bootc-testboot:dev
+--> 7a3b2c1d4e5f
+Successfully tagged ghcr.io/duyhenryer/bootc-testboot:dev
+```
+
+---
+
+## 5. Push to GHCR (CI only)
+
+Pushing to GHCR is handled **automatically by GitHub Actions** when you merge to `main`. There is no need to login or push locally.
+
+The workflow (`.github/workflows/build-bootc.yml`) builds the image with `podman build` then pushes using the built-in `GITHUB_TOKEN` — no PAT or manual credentials required.
+
+---
+
+## 6. Create Disk Images (CI only)
+
+Disk images (AMI, VMDK, OVA, QCOW2, ISO) are built in CI, not locally. Use `workflow_dispatch` on `build-artifacts.yml`:
+
+1. Go to **Actions** > **Build disk artifacts** > **Run workflow**
+2. Select distro, platforms, and fill in `formats` (e.g. `qcow2,vmdk,ami`)
+3. The workflow builds disk images and pushes them as OCI scratch artifacts to GHCR
+
+### Pulling and deploying disk artifacts
+
+For step-by-step extraction and deployment instructions (AWS, GCP, VMware, bare metal), see [003-deploying-and-upgrading.md](003-deploying-and-upgrading.md). That document covers:
+
+- How to extract disk files from OCI artifacts (`podman create` + `podman cp`)
+- Artifact path reference table for all formats (AMI, QCOW2, VMDK, OVA, ISO)
+- Complete deployment walkthroughs for AWS EC2 and GCP
+
+---
+
+## 7. Launch EC2 from AMI
+
+This project does not include Terraform. Launch manually:
+
+**AWS Console:**
+1. EC2 → Launch instance
+2. Select **My AMIs** → choose `bootc-testboot-dev`
+3. Instance type: t3.small or larger
+4. Configure security group (SSH 22, HTTP 80, 8080 for hello)
+5. Attach IAM instance profile with **SSM** permissions (for Session Manager)
+
+**AWS CLI:**
+
+```bash
+aws ec2 run-instances \
+  --image-id ami-0123456789abcdef0 \
+  --instance-type t3.small \
+  --key-name my-key \
+  --security-group-ids sg-xxxxx \
+  --iam-instance-profile Name=SSMInstanceProfile
+```
+
+---
+
+## 8. Verify Instance
+
+Connect via **AWS Systems Manager Session Manager** (or SSH if configured):
+
+```bash
+aws ssm start-session --target i-0123456789abcdef0
+```
+
+On the instance there is **no** project `Makefile` — the OS is the bootc deployment, not a dev checkout. Verify by hand. For production-safe upgrades, rollbacks, debugging, and emergencies on the host, continue to [Part B](#part-b--operations-runbook) below.
+
+```bash
+# Booted image and deployment
+sudo bootc status
+
+# Expected services (adjust names to match your image)
+systemctl is-active nginx hello.service sshd chronyd || true
+
+# HTTP (nginx → hello on 8080, if configured)
+curl -sf -o /dev/null -w "%{http_code}\n" http://127.0.0.1/ || true
+curl -sf http://127.0.0.1:8080/health || true
+
+# Immutable /usr
+touch /usr/bin/.test 2>&1 || echo "/usr is not writable (expected)"
+```
+
+**Registry audit (on your laptop, not on the VM):** after CI publishes to GHCR, run `make verify-ghcr` or `./scripts/verify-ghcr-packages.sh` to pull and verify artifact images — [005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md).
+
+---
+
+## 9. Adding a New App
+
+Example: add `repos/api/` alongside `repos/hello/`.
+
+### Step 1: Create app layout
+
+```
+repos/api/
+├── main.go
+├── main_test.go
+├── go.mod
+└── rootfs/
+    ├── usr/lib/systemd/system/api.service
+    └── usr/lib/tmpfiles.d/api.conf
+```
+
+### Step 2: Update Containerfile
+
+Add COPY + enable lines (the binary is auto-built by `make apps`):
+
+```dockerfile
+COPY bootc/apps/api/rootfs/ /
+RUN systemctl enable api
+```
+
+### Step 3: Rebuild and test locally
+
+```bash
+make build    # auto-discovers repos/api/, builds binary, assembles OS image
+make lint     # verify bootc compliance
+```
+
+Push to `main` to trigger CI build. Use `workflow_dispatch` for disk artifacts. On existing instances, use the upgrade flow in [Part B §1](#1-upgrade-os-production-safe).
+
+
+## Part B -- Artifacts and bootc-image-builder
+
 
 ### Local build prerequisites (Option A)
 
@@ -72,7 +296,7 @@ Change `centos/stream9` to your target distro (`centos/stream10`, `fedora/40`, `
 
 After building, verify with `podman images | grep bootc-testboot`. Then proceed to the deployment section for your target (AWS, GCE, VMware).
 
-After a VM is up (e.g. EC2), use [006-testing-guide-and-registry.md](006-testing-guide-and-registry.md) — **Post-deploy audit** — to check `systemd` failed units, app health, MongoDB init, symlinks, and **`hello` log files** (`hello.log`, `healthcheck.log` under `/var/log/bootc-testboot/hello/`).
+After a VM is up (e.g. EC2), use [004-testing-guide.md](004-testing-guide.md) — **Post-deploy audit** — to check `systemd` failed units, app health, MongoDB init, symlinks, and **`hello` log files** (`hello.log`, `healthcheck.log` under `/var/log/bootc-testboot/hello/`).
 
 ---
 
@@ -110,7 +334,7 @@ The disk file path **inside** the OCI container depends on the format. These pat
 | OVA | `ova` | `/*.ova` | `.../bootc-testboot/centos-stream9/ova:latest` |
 | Anaconda ISO | `anaconda-iso` | `/bootiso/disk.iso` | `.../bootc-testboot/centos-stream9/anaconda-iso:latest` |
 
-To verify all published images and these paths automatically, run [008-ghcr-audit.md](008-ghcr-audit.md) (`./scripts/verify-ghcr-packages.sh` or `make verify-ghcr`).
+To verify all published images and these paths automatically, run [005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md) (`./scripts/verify-ghcr-packages.sh` or `make verify-ghcr`).
 
 ### How to extract a disk file (generic steps)
 
@@ -276,7 +500,8 @@ The bootc OCI image and bootc-image-builder image must support the target arch. 
 
 For builder configs per format, see [builder/README.md](../../builder/README.md).
 
----
+## Part C -- Deployment Targets
+
 
 ## 3. Deploying to AWS EC2 (AMI)
 
@@ -1081,7 +1306,7 @@ sudo virt-install \
 
 ---
 
-## 9. Upgrading a Running VM (`bootc upgrade`)
+## Part D -- Upgrading a Running System
 
 > **Key concept:** OVA, QCOW2, AMI, and ISO are only for the **initial deployment**. Every
 > subsequent update is an in-place `bootc upgrade` — no redeployment, no new VM, no data loss.
@@ -1244,7 +1469,7 @@ on first boot.
 | `/var/log/bootc-testboot/` | `root` | Parent for all app log dirs | Yes | Yes |
 | `/var/lib/bootc-testboot/hello/` | `hello` | Hello app state | Yes | Yes |
 | `/var/log/bootc-testboot/hello/` | `hello` | Hello app + healthcheck logs | Yes | Yes |
-| `/var/home/appuser/` | `appuser` | Application user home | Yes | Yes |
+| `/var/lib/bootc-testboot/shared/` | `root:bootc-apps` | Shared resources (TLS CA, env files) | Yes | Yes |
 | `/var/lib/cloud/` | `root` | cloud-init state | Yes | Yes |
 
 > **Critical:** content you `COPY` into `/var/` in the Containerfile is only unpacked on
@@ -1332,7 +1557,7 @@ sudo bootc upgrade && sudo reboot
 
 ### Verifying the upgrade
 
-After reboot, run the [post-deploy audit checklist](008-ghcr-audit.md#post-deploy-vm-audit-checklist)
+After reboot, run the [post-deploy audit checklist](005-ghcr-audit-and-post-deploy.md#post-deploy-vm-audit-checklist)
 or the quick one-liner:
 
 ```bash
@@ -1353,13 +1578,330 @@ echo "=== Services ===" && systemctl is-active nginx valkey rabbitmq-server hell
 | Bootloader is separate | `bootc upgrade` does NOT update the bootloader. Run `sudo bootupctl update` if needed. |
 | `/var` content from Containerfile = first boot only | Content you `COPY` into `/var` only takes effect on first install. Use `tmpfiles.d` or `StateDirectory=` for runtime directories. |
 | Download-only discarded on surprise reboot | If the VM reboots before you apply a download-only upgrade, the staged deployment is lost. Image data remains cached, so re-running is fast. |
-| `ostree-unverified-registry` | Normal — means the image was pulled without signature verification (cosign not configured yet). See [009-selinux-mongodb.md](009-selinux-mongodb.md) §1 footnotes. |
+| `ostree-unverified-registry` | Normal — means the image was pulled without signature verification (cosign not configured yet). See [006-selinux-reference.md](006-selinux-reference.md) §1 footnotes. |
 
 ### References
 
 - [bootc: Upgrade & rollback](https://bootc-dev.github.io/bootc/man/bootc-upgrade.html)
-- [003-walkthrough-and-runbook.md — Operations runbook](003-walkthrough-and-runbook.md#part-b--operations-runbook) (canonical operator commands)
-- [005-production-upgrade-scenarios.md](005-production-upgrade-scenarios.md) (what changes on disk during upgrade)
+- [003-deploying-and-upgrading.md — Operations runbook](003-deploying-and-upgrading.md#part-b--operations-runbook) (canonical operator commands)
+- [003-deploying-and-upgrading.md](003-deploying-and-upgrading.md) (what changes on disk during upgrade)
+
+## Part E -- Release Scenarios
+
+## 2. What Happens During `bootc upgrade`
+
+When a customer runs `bootc upgrade` (or it runs automatically), here is exactly what happens to each part of the filesystem:
+
+### `/usr` -- Fully Replaced
+
+Everything in `/usr` is atomically swapped to the new image version:
+
+| What | Example | Behavior |
+|------|---------|----------|
+| App binaries | `/usr/bin/hello`, `/usr/bin/app-api` | Old removed, new installed |
+| Configs | `/usr/share/nginx/nginx.conf` | Replaced with new version |
+| systemd units | `/usr/lib/systemd/system/hello.service` | Replaced with new version |
+| tmpfiles.d | `/usr/lib/tmpfiles.d/mongodb.conf` | Replaced with new version |
+| Libraries | `/usr/libexec/testboot/*.sh` | Replaced with new version |
+
+This is the core value: **one upgrade replaces all code, all configs, all units atomically**.
+
+### `/etc` -- 3-Way Merge (but we avoid it)
+
+Because all our configs are symlinks pointing to `/usr/share/`, the merge has nothing to conflict with. The symlinks themselves are simple and stable.
+
+The only files in `/etc` that the customer's system might modify are:
+- `/etc/machine-id` (auto-generated, unique per machine)
+- `/etc/hostname` (set by cloud-init)
+- SSH host keys (generated on first boot)
+
+These are all machine-specific and merge safely.
+
+### `/var` -- Untouched
+
+**Nothing in `/var` is changed by the upgrade.** This is critical:
+
+| Data | Location | Survives upgrade? | Survives rollback? |
+|------|----------|-------------------|-------------------|
+| MongoDB data | `/var/lib/mongodb/` | Yes | Yes |
+| Valkey data | `/var/lib/valkey/` | Yes | Yes |
+| RabbitMQ data | `/var/lib/rabbitmq/` | Yes | Yes |
+| App state | `/var/lib/bootc-testboot/hello/` | Yes | Yes |
+| All logs | `/var/log/*/` | Yes | Yes |
+| SSH host keys | `/var/home/`, cloud-init state | Yes | Yes |
+
+---
+
+## 3. Release Scenarios
+
+### Scenario A: Add a New App
+
+**You built a new service `app-worker` and want to add it to the next release.**
+
+What you do:
+1. Add source code: `repos/app-worker/`
+2. Add rootfs overlay: `bootc/apps/app-worker/rootfs/usr/lib/systemd/system/app-worker.service`
+3. The Containerfile auto-discovers it (via `COPY bootc/apps/*/rootfs/ /` and the auto-enable loop)
+
+What happens on customer upgrade:
+- `/usr/bin/app-worker` appears (new binary)
+- `/usr/lib/systemd/system/app-worker.service` appears (new unit)
+- systemd starts it on next boot
+- `/var/lib/app-worker/` is created by `StateDirectory=` on first start
+
+**No manual steps needed on customer side.**
+
+### Scenario B: Remove an App
+
+**You want to remove the `old-reporter` service from the next release.**
+
+What you do:
+1. Remove `repos/old-reporter/` and `bootc/apps/old-reporter/`
+2. The binary and service file are no longer in the image
+
+What happens on customer upgrade:
+- `/usr/bin/old-reporter` disappears (binary removed)
+- `/usr/lib/systemd/system/old-reporter.service` disappears (unit removed)
+- systemd no longer starts it
+- `/var/lib/old-reporter/` **still exists** (orphan data in `/var`)
+
+**Orphan data cleanup:** If you want to remove `/var/lib/old-reporter/`, add a one-time cleanup script:
+
+```ini
+# In a service file that runs once after upgrade
+[Service]
+Type=oneshot
+ExecStart=/bin/rm -rf /var/lib/old-reporter
+RemainAfterExit=yes
+```
+
+Or document that the customer can manually remove it: `rm -rf /var/lib/old-reporter`.
+
+### Scenario C: Update a Config
+
+**You changed the Valkey `maxmemory` from 256mb to 512mb.**
+
+What you do:
+1. Edit `bootc/services/valkey/rootfs/usr/share/valkey/valkey.conf`
+2. Build and release
+
+What happens on customer upgrade:
+- `/usr/share/valkey/valkey.conf` is replaced (new maxmemory value)
+- `/etc/valkey/valkey.conf` symlink still points to it
+- Valkey reads the new config on next restart
+- No merge conflicts, no customer intervention
+
+### Scenario D: MongoDB Schema Migration
+
+**Your app v2 needs a new MongoDB collection or index.**
+
+This is the one scenario that requires application-level handling, because `/var/lib/mongodb/` is never touched by the upgrade. The database schema must be migrated by your app.
+
+**Recommended pattern:** Use `ExecStartPre=` in the app's systemd unit:
+
+```ini
+[Service]
+ExecStartPre=/usr/bin/app-api --migrate
+ExecStart=/usr/bin/app-api --serve
+```
+
+The `--migrate` command should:
+1. Check the current schema version (e.g., a `_schema_version` collection)
+2. Apply any pending migrations
+3. Exit with 0 on success
+
+**Important:** Migrations must be **forward-compatible**. If v2 adds a new index, v1 should still work with that index present (in case of rollback).
+
+### Scenario E: New `/var` Directory Needed
+
+**Your new service needs `/var/lib/newservice/data/`.**
+
+What you do:
+1. Add `bootc/services/newservice/rootfs/usr/lib/tmpfiles.d/newservice.conf`:
+   ```
+   d /var/lib/newservice/data 0755 newservice newservice -
+   ```
+2. Or use `StateDirectory=newservice` in the systemd unit (auto-creates `/var/lib/newservice`)
+
+What happens on customer upgrade:
+- The new tmpfiles.d entry is in `/usr` (replaced)
+- On first boot after upgrade, `systemd-tmpfiles --create` creates the directory
+- The service starts and finds its directory ready
+
+
+## Part F -- Operations and Debugging
+
+## 3. Debug on Immutable OS
+
+### Temporary writable /usr
+
+```bash
+sudo bootc usr-overlay
+```
+
+Creates a temporary writable overlay on `/usr`. Changes are **not persistent** across reboot. Useful for quick debugging (e.g., installing a tool temporarily).
+
+### Check local /etc modifications
+
+```bash
+sudo ostree admin config-diff
+```
+
+Shows files in `/etc` that differ from the image defaults. Includes metadata changes (uid, gid, xattrs).
+
+### View deployment status
+
+```bash
+sudo bootc status --verbose
+```
+
+Shows:
+- Booted deployment (current)
+- Staged deployment (if any)
+- Rollback deployment (previous)
+- Download-only status
+
+### View service logs
+
+```bash
+journalctl -u hello -n 100          # app logs
+journalctl -u nginx -n 50           # nginx logs
+systemctl status hello nginx        # service status
+```
+
+---
+
+## 4. Handle /opt (Read-Only) Apps
+
+When deployed, `/opt` is read-only. Software that writes to `/opt` needs one of these solutions:
+
+### Solution 1: Symlinks to /var (best -- maximum immutability)
+
+```dockerfile
+# In Containerfile:
+RUN mkdir -p /opt/myapp && \
+    ln -sr /var/log/myapp /opt/myapp/logs && \
+    ln -sr /var/lib/myapp /opt/myapp/data
+```
+
+### Solution 2: BindPaths in systemd unit
+
+```ini
+[Service]
+ExecStart=/opt/myapp/bin/myapp
+BindPaths=/var/log/myapp:/opt/myapp/logs
+BindPaths=/var/lib/myapp:/opt/myapp/data
+```
+
+### Solution 3: ostree-state-overlay (easiest, but allows some drift)
+
+```dockerfile
+# In Containerfile:
+RUN systemctl enable ostree-state-overlay@opt.service
+```
+
+Creates a persistent writable overlay on `/opt`. Changes survive reboots but are overwritten on updates.
+
+| Solution | Immutability | Complexity | Persistence | Use when |
+|----------|-------------|------------|-------------|----------|
+| Symlinks | Maximum | Medium | Via /var | You control the app layout |
+| BindPaths | High | Low | Via /var | App has fixed paths, launched by systemd |
+| State overlay | Lower | Lowest | Yes (until update) | Legacy app, hard to modify |
+
+---
+
+## 5. Common Gotchas
+
+| Gotcha | Details |
+|--------|---------|
+| `rpm-ostree install` breaks `bootc upgrade` | Never use rpm-ostree to install packages on a bootc host. All packages must go in the Containerfile. |
+| Bootloader needs separate update | `bootc upgrade` does NOT update the bootloader. Run `sudo bootupctl update` separately. |
+| `/var` from Containerfile = first boot only | Content you COPY into `/var` in the Containerfile only takes effect on first install. Use `tmpfiles.d` or `StateDirectory=` instead. |
+| Staged download-only discarded on reboot | If you reboot before applying, the staged deployment is lost. Image data remains cached. |
+| Cannot SSH and `dnf install` | `/usr` is read-only. All changes must go through the Containerfile and a new image build. Use `bootc usr-overlay` for temporary debugging only. |
+| `/etc` 3-way merge conflicts | Service configs are symlinked to `/usr/share/` (read-only), so merge conflicts do not occur for managed configs. Only machine-local files in `/etc` (hostname, SSH keys) are subject to merge. |
+
+---
+
+## 6. Emergency Procedures
+
+### Instance won't boot
+
+Launch a new EC2 instance from the previous known-good AMI. The old AMI is still available in AWS.
+
+### Bad update deployed to fleet
+
+```bash
+sudo bootc rollback
+sudo systemctl reboot
+```
+
+Time: ~2 minutes per instance. Can be parallelized across fleet via SSM Run Command.
+
+### Need to debug a live issue
+
+```bash
+# Temporary writable access (lost on reboot)
+sudo bootc usr-overlay
+
+# Now you can install debug tools
+sudo dnf install -y strace tcpdump
+
+# Debug the issue...
+
+# Reboot to return to clean immutable state
+sudo systemctl reboot
+```
+
+### Check what image is running
+
+```bash
+sudo bootc status
+```
+
+Shows the exact container image reference and digest for the booted deployment.
+
+
+## Part G -- Partition Planning
+
+## 4. Partition Planning
+
+The `builder/*/config.toml` defines disk partitions for the generated VM images.
+
+### Current Layout (POC)
+
+```toml
+[[customizations.filesystem]]
+mountpoint = "/"
+minsize = "10 GiB"
+
+[[customizations.filesystem]]
+mountpoint = "/var/data"
+minsize = "5 GiB"
+```
+
+### Production Recommendations
+
+For production with MongoDB and other stateful services, consider separating data partitions:
+
+```toml
+[[customizations.filesystem]]
+mountpoint = "/"
+minsize = "20 GiB"
+
+[[customizations.filesystem]]
+mountpoint = "/var/lib/mongodb"
+minsize = "50 GiB"
+
+[[customizations.filesystem]]
+mountpoint = "/var/log"
+minsize = "10 GiB"
+```
+
+**Why separate partitions?**
+- MongoDB data grows independently -- a full data disk should not prevent OS from booting
+- Log partition prevents log flooding from filling the root
+- Easier to resize individual partitions per customer needs
 
 ---
 
@@ -1426,3 +1968,22 @@ findmnt /var/lib/mongodb /var/log || true
 # Validate effective sizes
 df -h /sysroot /var/lib/mongodb /var/log
 ```
+
+## Quick reference
+
+| Area | Task | Command or pointer |
+|------|------|---------------------|
+| Dev | Run unit tests | `make test` |
+| Dev | Build app image | `make build` |
+| Dev | Lint image | `make lint` |
+| CI | Push to GHCR | Automatic on merge to `main` |
+| CI | Create disk images | `workflow_dispatch` on `build-artifacts.yml` with `formats=...` (optional `base_distro=all`) |
+| CI / deploy | Pull / deploy disk artifact | [003-deploying-and-upgrading.md](003-deploying-and-upgrading.md) |
+| Ops | Check status | `sudo bootc status` |
+| Ops | Pre-download update | `sudo bootc upgrade --download-only` |
+| Ops | Apply update + reboot | `sudo bootc upgrade --from-downloaded --apply` or `sudo bootc upgrade --apply` |
+| Ops | Rollback + reboot | `sudo bootc rollback && sudo systemctl reboot` |
+| Ops | Temp writable /usr | `sudo bootc usr-overlay` |
+| Ops | Check /etc drift | `sudo ostree admin config-diff` |
+| Ops | Update bootloader | `sudo bootupctl update` |
+| Registry | Verify GHCR after CI | [005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md), `make verify-ghcr` |
