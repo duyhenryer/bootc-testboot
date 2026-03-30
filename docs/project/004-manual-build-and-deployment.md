@@ -20,7 +20,8 @@ Currently tested end-to-end: **AWS EC2** and **Google Cloud Platform**. VMware a
 - [6. Bare Metal (Anaconda ISO)](#6-bare-metal-anaconda-iso)
 - [7. Adding New Deployment Targets](#7-adding-new-deployment-targets)
 - [8. Running QCOW2 Locally](#8-running-qcow2-locally)
-- [9. Tips and Checklist](#9-tips-and-checklist)
+- [9. Upgrading a Running VM (`bootc upgrade`)](#9-upgrading-a-running-vm-bootc-upgrade)
+- [10. Tips and Checklist](#10-tips-and-checklist)
 
 ### Local build prerequisites (Option A)
 
@@ -123,7 +124,8 @@ podman pull ghcr.io/duyhenryer/bootc-testboot/centos-stream9/qcow2:latest
 ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot/centos-stream9/qcow2:latest /bin/true)
 
 # 3. Copy the disk file out of the container
-podman cp "$ctr":/qcow2/disk.qcow2 ./disk.qcow2
+mkdir -p output/qcow2
+podman cp "$ctr":/qcow2/disk.qcow2 output/qcow2/disk.qcow2
 
 # 4. Clean up
 podman rm "$ctr"
@@ -414,8 +416,9 @@ If CI has already built the AMI artifact, pull and extract it:
 ```bash
 podman pull ghcr.io/duyhenryer/bootc-testboot/centos-stream9/ami:latest
 
+mkdir -p output/ami/image
 ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot/centos-stream9/ami:latest /bin/true)
-podman cp "$ctr":/image/disk.raw ./disk.raw
+podman cp "$ctr":/image/disk.raw output/ami/image/disk.raw
 podman rm "$ctr"
 ```
 
@@ -456,8 +459,7 @@ export BUCKET=bootc-testboot
 aws s3 mb "s3://${BUCKET}" --region "$AWS_REGION"   # skip if bucket already exists
 
 # Step 2: Upload the raw disk to S3
-# If you used Option A (local build), the file is at output/ami/image/disk.raw
-# If you used Option B (pull from GHCR), the file is at ./disk.raw
+# Both Option A and Option B produce the file at output/ami/image/disk.raw
 aws s3 cp output/ami/image/disk.raw "s3://${BUCKET}/bootc-testboot.raw"
 
 # Step 3: Import as EBS snapshot (bypasses OS detection)
@@ -679,11 +681,12 @@ tar -Szcf ../bootc-centos9.tar.gz disk.raw
 ```bash
 podman pull ghcr.io/duyhenryer/bootc-testboot/centos-stream9/raw:latest
 
+mkdir -p output/raw/image output/gce
 ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot/centos-stream9/raw:latest /bin/true)
-podman cp "$ctr":/image/disk.raw ./disk.raw
+podman cp "$ctr":/image/disk.raw output/raw/image/disk.raw
 podman rm "$ctr"
 
-tar -Szcf bootc-centos9.tar.gz disk.raw
+tar -Szcf output/gce/bootc-centos9.tar.gz -C output/raw/image disk.raw
 ```
 
 ### Upload and deploy
@@ -907,8 +910,9 @@ podman rm "$ctr"
 
 # Option 2: Pull just the VMDK (if you want to customize the OVF or skip OVA)
 podman pull ghcr.io/duyhenryer/bootc-testboot/centos-stream9/vmdk:latest
+mkdir -p output/vmdk/vmdk
 ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot/centos-stream9/vmdk:latest /bin/true)
-podman cp "$ctr":/vmdk/disk.vmdk ./disk.vmdk
+podman cp "$ctr":/vmdk/disk.vmdk output/vmdk/vmdk/disk.vmdk
 podman rm "$ctr"
 ```
 
@@ -1019,15 +1023,16 @@ Then build your VMDK/OVA from this derived image instead of the base.
 
 ```bash
 podman pull ghcr.io/duyhenryer/bootc-testboot/centos-stream9/anaconda-iso:latest
+mkdir -p output/anaconda-iso/bootiso
 ctr=$(podman create ghcr.io/duyhenryer/bootc-testboot/centos-stream9/anaconda-iso:latest /bin/true)
-podman cp "$ctr":/bootiso/disk.iso ./bootc-installer.iso
+podman cp "$ctr":/bootiso/disk.iso output/anaconda-iso/bootiso/disk.iso
 podman rm "$ctr"
 ```
 
 ### Flash and boot
 
 ```bash
-sudo dd if=./bootc-installer.iso of=/dev/sdX bs=4M status=progress
+sudo dd if=output/anaconda-iso/bootiso/disk.iso of=/dev/sdX bs=4M status=progress
 ```
 
 Boot the physical machine from the USB drive. The Anaconda installer automatically lays down the bootc image onto the hard drive.
@@ -1076,7 +1081,289 @@ sudo virt-install \
 
 ---
 
-## 9. Tips and Checklist
+## 9. Upgrading a Running VM (`bootc upgrade`)
+
+> **Key concept:** OVA, QCOW2, AMI, and ISO are only for the **initial deployment**. Every
+> subsequent update is an in-place `bootc upgrade` — no redeployment, no new VM, no data loss.
+
+### How it works
+
+bootc uses an **A/B deployment model** backed by OSTree. The running system has two deployment
+slots. `bootc upgrade` downloads the new image, writes it to the inactive slot, and on reboot the
+bootloader atomically switches to it. The old slot is kept for instant rollback.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Slot A (current, booted)      Slot B (staged, new)     │
+│  centos-stream9:latest         centos-stream9:latest    │
+│  sha256:aaa111...              sha256:bbb222...         │
+│                                                         │
+│  reboot → Slot B becomes active                         │
+│  rollback → Slot A becomes active again                 │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Workflow: push code → upgrade VM
+
+```bash
+# === On your workstation ===
+git push origin main          # CI builds + pushes new image to GHCR
+
+# === On the running VM (SSH in) ===
+
+# 1. Check what's available (no download, no reboot)
+sudo bootc upgrade --check
+
+# 2. Download + stage (no reboot, no downtime)
+sudo bootc upgrade
+
+# 3. Reboot to activate the new deployment
+sudo reboot
+
+# 4. Verify after reboot
+bootc status                  # confirms new digest
+sudo systemctl --failed       # should be empty
+```
+
+### Production-safe phased upgrade
+
+For production VMs, split the upgrade into download and apply phases to control when the reboot
+happens:
+
+```bash
+# Phase 1: Download during business hours (no impact)
+sudo bootc upgrade --download-only
+
+# Phase 2: Apply during maintenance window (triggers reboot)
+sudo bootc upgrade --from-downloaded --apply
+```
+
+### Rollback
+
+If the new image has a problem — instant rollback, no rebuild needed:
+
+```bash
+sudo bootc rollback
+sudo reboot
+```
+
+After reboot the VM runs the previous image. Your data in `/var` (MongoDB, logs, credentials) is
+**untouched** — it survives both upgrades and rollbacks.
+
+### What changes and what doesn't
+
+Understanding the filesystem lifecycle is critical for operating a bootc system. Getting this wrong
+is the single most common cause of "upgrade broke my config" or "where did my data go" issues.
+
+> **Pre-requisite:** [docs/bootc/003-filesystem-layout.md](../bootc/003-filesystem-layout.md)
+> for the theory. This section is the practical mapping for **this project**.
+
+#### Filesystem zones — summary
+
+| Zone | On upgrade | On rollback | Operator should edit? |
+|------|-----------|-------------|----------------------|
+| `/usr` | **Replaced** entirely by new image | Swapped to previous image | **Never.** Read-only at runtime (composefs). All changes via Containerfile rebuild. |
+| `/etc` | **3-way merged** — local changes preserved | Swapped to previous image | **Rarely.** Use only for machine-local overrides (drop-ins). Prefer image-shipped configs. |
+| `/var` | **Untouched** — never overwritten | **Untouched** — never rolled back | **Yes** — this is persistent state. Data, logs, credentials live here. |
+| `/run`, `/tmp` | Ephemeral — recreated every boot | N/A | Temporary only. Never store state here. |
+
+#### `/usr` — read-only, image-managed (DO NOT touch at runtime)
+
+Everything under `/usr` is **replaced atomically** on upgrade. Do not write to `/usr` on a running
+system — it will be lost on the next `bootc upgrade` and may fail due to composefs.
+
+| Runtime path | Source in repo | What it is |
+|-------------|---------------|------------|
+| `/usr/bin/hello` | `repos/hello/` → `output/bin/` | App binary |
+| `/usr/share/nginx/nginx.conf` | `bootc/services/nginx/rootfs/` | Immutable nginx config |
+| `/usr/share/mongodb/mongod.conf` | `bootc/services/mongodb/rootfs/` | Immutable MongoDB config |
+| `/usr/share/valkey/valkey.conf` | `bootc/services/valkey/rootfs/` | Immutable Valkey config |
+| `/usr/share/rabbitmq/rabbitmq.conf` | `bootc/services/rabbitmq/rootfs/` | Immutable RabbitMQ config |
+| `/usr/lib/systemd/system/*.service` | `bootc/apps/*/rootfs/`, `bootc/services/*/rootfs/` | systemd units |
+| `/usr/lib/tmpfiles.d/*.conf` | `bootc/*/rootfs/` | Directory creation rules for `/var` |
+| `/usr/lib/sysusers.d/*.conf` | `bootc/*/rootfs/`, `base/rootfs/` | System user/group definitions |
+| `/usr/lib/sysctl.d/99-production.conf` | `base/rootfs/` | Kernel tuning (somaxconn, file-max, etc.) |
+| `/usr/libexec/testboot/*.sh` | `bootc/libs/common/rootfs/` | Shared scripts (log, gen-password, gen-tls-cert) |
+| `/usr/share/selinux/targeted/*.pp` | Containerfile builder stage | SELinux policy modules |
+
+**To change any of these:** edit the source file in the repo → rebuild image → push → `bootc upgrade`.
+
+#### `/etc` — mutable, 3-way merged (use with caution)
+
+`/etc` is machine-local config. On upgrade, bootc performs a **3-way merge**: changes you made
+locally are preserved, changes from the new image are applied, and conflicts are flagged.
+
+**This project symlinks most `/etc` configs to `/usr/share/` to make them immutable:**
+
+| `/etc` path | Points to | Editable at runtime? |
+|------------|-----------|---------------------|
+| `/etc/nginx/nginx.conf` | → `/usr/share/nginx/nginx.conf` | **No** — symlink to read-only `/usr` |
+| `/etc/nginx/conf.d/` | → `/usr/share/nginx/conf.d/` | **No** — symlink to read-only `/usr` |
+| `/etc/mongod.conf` | → `/usr/share/mongodb/mongod.conf` | **No** — symlink to read-only `/usr` |
+| `/etc/valkey/valkey.conf` | → `/usr/share/valkey/valkey.conf` | **No** — symlink to read-only `/usr` |
+| `/etc/rabbitmq/rabbitmq.conf` | → `/usr/share/rabbitmq/rabbitmq.conf` | **No** — symlink to read-only `/usr` |
+
+**These `/etc` files ARE editable at runtime (they are real files, not symlinks):**
+
+| `/etc` path | Source | Safe to edit? | Notes |
+|------------|--------|--------------|-------|
+| `/etc/ssh/sshd_config.d/99-hardening.conf` | `base/rootfs/` | Yes (drop-in) | Add your own `98-*.conf` drop-in instead of editing this one |
+| `/etc/chrony.d/99-custom.conf` | `base/rootfs/` | Yes (drop-in) | NTP configuration |
+| `/etc/systemd/journald.conf.d/99-production.conf` | `base/rootfs/` | Yes (drop-in) | Journal retention and compression |
+| `/etc/systemd/system.conf.d/99-limits.conf` | `base/rootfs/` | Yes (drop-in) | DefaultLimitNOFILE, DefaultTasksMax |
+| `/etc/sudoers.d/wheel-nopasswd` | `base/rootfs/` | Caution | Passwordless sudo for wheel group |
+| `/etc/selinux/targeted/` | Build-time `semodule` | **No** — managed by image build | Policy compiled at build time, merged on upgrade |
+
+> **Best practice:** if you need to override a config at runtime, create a **new** drop-in file
+> (e.g. `/etc/ssh/sshd_config.d/50-local.conf`) rather than editing the image-shipped file.
+> Drop-ins are additive and survive upgrades cleanly. Editing the shipped file risks merge
+> conflicts.
+
+#### `/var` — persistent state (survives upgrade AND rollback)
+
+`/var` is **never touched by bootc** — not on upgrade, not on rollback, not on image replacement.
+It is the single source of truth for all runtime state. Directories are created by `tmpfiles.d`
+on first boot.
+
+| `/var` path | Owner | What it holds | Survives upgrade? | Survives rollback? |
+|------------|-------|--------------|-------------------|-------------------|
+| `/var/lib/mongodb/` | `mongod` | Database files, journals | Yes | Yes |
+| `/var/lib/mongodb/tls/` | `mongod` | TLS certs (ca.pem, server.pem) | Yes | Yes |
+| `/var/lib/mongodb/.admin-pw` | `mongod` | Admin password (generated on first boot) | Yes | Yes |
+| `/var/lib/mongodb/.keyFile` | `mongod` | Replica set internal auth key | Yes | Yes |
+| `/var/lib/mongodb/.setup-done` | `mongod` | Flag: credential setup completed | Yes | Yes |
+| `/var/lib/mongodb/.rs-initialized` | `mongod` | Flag: rs0 + admin user created | Yes | Yes |
+| `/var/log/mongodb/mongod.log` | `mongod` | MongoDB runtime log | Yes | Yes |
+| `/var/lib/valkey/` | `valkey` | RDB snapshots, AOF logs | Yes | Yes |
+| `/var/log/valkey/` | `valkey` | Valkey logs | Yes | Yes |
+| `/var/lib/rabbitmq/` | `rabbitmq` | Queues, exchanges, Erlang cookie | Yes | Yes |
+| `/var/log/rabbitmq/` | `rabbitmq` | RabbitMQ logs | Yes | Yes |
+| `/var/lib/nginx/` | `nginx` | Temp files, cache | Yes | Yes |
+| `/var/log/nginx/` | `nginx` | Access and error logs | Yes | Yes |
+| `/var/lib/bootc-testboot/` | `root` | Parent for all app state dirs | Yes | Yes |
+| `/var/log/bootc-testboot/` | `root` | Parent for all app log dirs | Yes | Yes |
+| `/var/lib/bootc-testboot/hello/` | `hello` | Hello app state | Yes | Yes |
+| `/var/log/bootc-testboot/hello/` | `hello` | Hello app + healthcheck logs | Yes | Yes |
+| `/var/home/appuser/` | `appuser` | Application user home | Yes | Yes |
+| `/var/lib/cloud/` | `root` | cloud-init state | Yes | Yes |
+
+> **Critical:** content you `COPY` into `/var/` in the Containerfile is only unpacked on
+> **first install** (like a Docker `VOLUME`). Subsequent image upgrades do NOT overwrite `/var`.
+> Always use `tmpfiles.d` or `StateDirectory=` to declare `/var` directories.
+
+#### Decision quick-reference: "where do I put this?"
+
+| Scenario | Where | Why |
+|----------|-------|-----|
+| New app binary | `/usr/bin/` via Containerfile | Immutable, versioned with image |
+| New service config that customers must not edit | `/usr/share/<svc>/` + symlink from `/etc/` | Read-only at runtime, zero merge conflicts |
+| SSH key for a new user | `builder/*/config.toml` `[[customizations.user]]` | Baked into disk image at build time |
+| Machine-local override (e.g. custom NTP server) | `/etc/chrony.d/50-local.conf` (drop-in) | Survives upgrades via 3-way merge |
+| Runtime data (database, queue) | `/var/lib/<svc>/` via `tmpfiles.d` | Persistent, never overwritten by bootc |
+| Logs | `/var/log/<svc>/` via `tmpfiles.d` or `LogsDirectory=` | Persistent, rotated by logrotate |
+| Secrets generated on first boot | `/var/lib/<svc>/` via `gen-password.sh` | Persistent, never regenerated unless flag removed |
+| Temporary files | `/run/` or `/tmp/` | Ephemeral — gone after reboot |
+
+#### What NOT to do on a running bootc system
+
+| Don't | Why | Do this instead |
+|-------|-----|----------------|
+| `rpm-ostree install <pkg>` | Breaks `bootc upgrade` — mixes two package models | Add `RUN dnf install` to Containerfile |
+| `vi /etc/nginx/nginx.conf` | It's a symlink to read-only `/usr/share/` — you'll get "Read-only file system" | Edit `bootc/services/nginx/rootfs/usr/share/nginx/nginx.conf` in repo → rebuild → upgrade |
+| `vi /usr/share/mongodb/mongod.conf` | `/usr` is read-only (composefs) — will fail | Same: edit in repo → rebuild → upgrade |
+| `cp new.conf /usr/lib/systemd/system/foo.service` | `/usr` is read-only | Add to `bootc/apps/foo/rootfs/` → rebuild |
+| `systemctl edit --full mongod` | Creates override in `/etc` that can conflict on upgrade | Use `mongod.service.d/override.conf` drop-in in the rootfs overlay |
+| `rm /var/lib/mongodb/.rs-initialized` | MongoDB init service will re-run and try to create the admin user again (may fail if rs already exists with auth) | Only do this if you genuinely need to re-initialize |
+| `chmod 777 /var/lib/mongodb/.admin-pw` | Weakens security — file should be `mongod:mongod` 0600 | Use `sudo cat` to read it |
+
+### Per-platform notes
+
+#### AWS EC2
+
+```bash
+# SSH into the instance
+ssh -i key.pem devops@<ec2-public-ip>
+sudo bootc upgrade && sudo reboot
+```
+
+No AWS-specific steps. The instance keeps its public IP (if Elastic IP), security groups, and IAM
+role. The AMI that launched the instance is unaffected.
+
+#### Google Cloud Platform (GCE)
+
+```bash
+gcloud compute ssh devops@<instance-name> --zone <zone>
+sudo bootc upgrade && sudo reboot
+```
+
+The instance keeps its network, metadata, and service account. No need to re-create the instance.
+
+#### VMware vSphere (OVA / VMDK)
+
+```bash
+ssh devops@<vsphere-vm-ip>
+sudo bootc upgrade && sudo reboot
+```
+
+The VM keeps its vSphere hardware profile, network, and datastore placement. The VMDK on disk is
+updated in-place by the A/B slot mechanism — no new OVA import needed.
+
+#### Xen Orchestra / XCP-ng (QCOW2)
+
+```bash
+ssh devops@<xen-vm-ip>
+sudo bootc upgrade && sudo reboot
+```
+
+Same as above. The QCOW2 disk is updated in-place. No need to re-import.
+
+#### QCOW2 (local KVM / libvirt)
+
+```bash
+ssh devops@<vm-ip>
+sudo bootc upgrade && sudo reboot
+```
+
+Or via `virsh console`:
+
+```bash
+sudo bootc upgrade && sudo reboot
+```
+
+### Verifying the upgrade
+
+After reboot, run the [post-deploy audit checklist](008-ghcr-audit.md#post-deploy-vm-audit-checklist)
+or the quick one-liner:
+
+```bash
+sudo bash -c '
+echo "=== Status ===" && bootc status | head -10
+echo "=== Failed ===" && systemctl --failed
+echo "=== SELinux ===" && getenforce && semodule -l | grep -E "mongodb|bootc"
+echo "=== Mongod ===" && systemctl is-active mongod
+echo "=== Services ===" && systemctl is-active nginx valkey rabbitmq-server hello
+'
+```
+
+### Gotchas
+
+| Gotcha | Detail |
+|--------|--------|
+| `rpm-ostree install` breaks `bootc upgrade` | Never use `rpm-ostree` to install packages on a running host. All packages must go in the Containerfile. |
+| Bootloader is separate | `bootc upgrade` does NOT update the bootloader. Run `sudo bootupctl update` if needed. |
+| `/var` content from Containerfile = first boot only | Content you `COPY` into `/var` only takes effect on first install. Use `tmpfiles.d` or `StateDirectory=` for runtime directories. |
+| Download-only discarded on surprise reboot | If the VM reboots before you apply a download-only upgrade, the staged deployment is lost. Image data remains cached, so re-running is fast. |
+| `ostree-unverified-registry` | Normal — means the image was pulled without signature verification (cosign not configured yet). See [009-selinux-mongodb.md](009-selinux-mongodb.md) §1 footnotes. |
+
+### References
+
+- [bootc: Upgrade & rollback](https://bootc-dev.github.io/bootc/man/bootc-upgrade.html)
+- [003-walkthrough-and-runbook.md — Operations runbook](003-walkthrough-and-runbook.md#part-b--operations-runbook) (canonical operator commands)
+- [005-production-upgrade-scenarios.md](005-production-upgrade-scenarios.md) (what changes on disk during upgrade)
+
+---
+
+## 10. Tips and Checklist
 
 ### Passwordless sudo
 
