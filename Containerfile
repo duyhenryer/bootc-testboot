@@ -116,7 +116,6 @@ RUN rm -f /var/log/mongodb/mongod.log && \
     rm -rf /var/lib/dnf /var/lib/rhsm \
     /var/log/{dnf*,hawkey*,rhsm} /var/log/sa \
     /var/cache/{dnf,ldconfig,libdnf5} \
-    /var/home/appuser/.bash* \
     /var/roothome/buildinfo \
     /run/cloud-init /run/mongodb /run/rhsm \
     /tmp/*

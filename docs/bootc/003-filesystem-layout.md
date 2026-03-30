@@ -203,7 +203,7 @@ RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf && \
 
 This pattern applies to all middleware (nginx, mongodb, valkey, rabbitmq) and app configs.
 
-> For full production upgrade scenarios, see [005-production-upgrade-scenarios.md](../project/005-production-upgrade-scenarios.md).
+> For full production upgrade scenarios, see [003-deploying-and-upgrading.md](../project/003-deploying-and-upgrading.md).
 
 ---
 

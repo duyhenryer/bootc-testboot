@@ -6,7 +6,7 @@ It follows upstream bootc-image-builder behavior and maps it to this repository'
 **Canonical upstream source:** [osbuild bootc-image-builder docs](https://osbuild.org/docs/bootc/)
 
 **Project references:**
-- [Manual build and deployment](../project/004-manual-build-and-deployment.md)
+- [Manual build and deployment](../project/003-deploying-and-upgrading.md)
 - [Builder config README](../../builder/README.md)
 
 ---
@@ -36,7 +36,7 @@ It follows upstream bootc-image-builder behavior and maps it to this repository'
 
 Notes:
 - Upstream supports passing `--type` multiple times.
-- In this repo, artifact container packaging paths are documented in [manual deployment doc](../project/004-manual-build-and-deployment.md).
+- In this repo, artifact container packaging paths are documented in [manual deployment doc](../project/003-deploying-and-upgrading.md).
 
 ---
 
@@ -206,7 +206,7 @@ Upstream documents rootless `--in-vm` as experimental. Use it only if your envir
 - Preferred artifact: `vmdk`.
 - For OVA workflows, package VMDK + OVF + manifest (BIB does not have `--type ova`).
 - Use full packaging/deploy steps in:
-  - [VMware section in manual deployment doc](../project/004-manual-build-and-deployment.md)
+  - [VMware section in manual deployment doc](../project/003-deploying-and-upgrading.md)
   - [builder/README.md](../../builder/README.md)
 
 ---
@@ -261,6 +261,6 @@ df -h /sysroot /var/lib/mongodb /var/log
 ## 10) References
 
 - [osbuild bootc-image-builder docs](https://osbuild.org/docs/bootc/)
-- [Manual build and deployment](../project/004-manual-build-and-deployment.md)
+- [Manual build and deployment](../project/003-deploying-and-upgrading.md)
 - [Builder config README](../../builder/README.md)
 

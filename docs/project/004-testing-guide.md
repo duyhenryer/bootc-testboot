@@ -474,7 +474,7 @@ podman run --rm <image> bash -c '
   cat /usr/lib/tmpfiles.d/mongodb.conf
   cat /usr/lib/tmpfiles.d/valkey.conf
   cat /usr/lib/tmpfiles.d/rabbitmq.conf
-  cat /usr/lib/sysusers.d/appuser.conf
+  cat /usr/lib/sysusers.d/bootc-apps.conf
 '
 ```
 
@@ -482,7 +482,7 @@ podman run --rm <image> bash -c '
 
 | File | Directories declared |
 |------|---------------------|
-| `base-requirements.conf` | `/var/lib/cloud`, `/var/lib/dhcpcd`, `/var/lib/dhclient`, `/var/lib/pcp`, `/var/lib/rhsm`, `/var/home/appuser` |
+| `base-requirements.conf` | `/var/lib/cloud`, `/var/lib/dhcpcd`, `/var/lib/dhclient`, `/var/lib/pcp`, `/var/lib/rhsm` |
 | `testboot-common.conf` | `/var/lib/bootc-testboot`, `/var/log/bootc-testboot` |
 | `nginx.conf` | `/var/lib/nginx`, `/var/lib/nginx/tmp`, `/var/log/nginx` |
 | `mongodb.conf` | `/var/lib/mongodb`, `/var/log/mongodb` |
@@ -493,7 +493,7 @@ podman run --rm <image> bash -c '
 
 | File | User |
 |------|------|
-| `appuser.conf` | `appuser` (member of `wheel`) |
+| `bootc-apps.conf` | `bootc-apps` group (shared group for all Go app services) |
 
 ### TC-08e: Middleware Immutable Configs
 
@@ -608,7 +608,7 @@ bootc-testboot/
 | `/var/lib/pcp/config/` | CentOS pcp package | Sub-directories not declared in upstream tmpfiles.d |
 | `/var/roothome/buildinfo/` | CentOS build metadata | Baked into the base image at compose time |
 | `/var/lib/rhsm/productid.js` | Red Hat Subscription Manager | File (not directory) in /var |
-| `/var/home/appuser/.bashrc` | useradd skeleton | Skeleton dotfiles copied during user creation |
+| `/var/lib/bootc-testboot/shared/` | Shared app resources | TLS CA certs, environment files (owned by `root:bootc-apps`) |
 
 - **Resolution:** These warnings cannot be fixed without modifying the CentOS base image itself. Use `make lint` (without `--fatal-warnings`) for local testing.
 
@@ -617,7 +617,7 @@ bootc-testboot/
 ## Registry: post-publish GHCR (TC-12)
 
 - **Command:** `make verify-ghcr` (runs [`scripts/verify-ghcr-packages.sh`](../../scripts/verify-ghcr-packages.sh))
-- **What it tests:** Remote manifests (`skopeo inspect`) and, unless `VERIFY_SKIP_PULL=1`, full `podman pull` plus tarball path checks for disk artifacts and bootc labels for base/app images — see [008-ghcr-audit.md](008-ghcr-audit.md).
+- **What it tests:** Remote manifests (`skopeo inspect`) and, unless `VERIFY_SKIP_PULL=1`, full `podman pull` plus tarball path checks for disk artifacts and bootc labels for base/app images — see [005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md).
 - **Not the same as:** `make audit` (local rebuild + lint, no registry pull).
 
 ---
@@ -639,62 +639,8 @@ bootc-testboot/
 
 ### Post-deploy audit (EC2 / VM)
 
-Use this after SSH (or serial console) to a booted instance. It complements [008-ghcr-audit.md](008-ghcr-audit.md) (registry-side checks).
-
-**Failed units and logs**
-
-```bash
-systemctl --failed --no-pager
-journalctl -u mongodb-init.service -b --no-pager -l
-```
-
-**MongoDB init**
-
-- `mongodb-init.service` runs `mongosh` (package **`mongodb-mongosh`**). If the journal shows `mongosh: command not found`, rebuild the app image from a current `Containerfile` and redeploy.
-- `mongod.conf` uses `net.tls.mode: preferTLS`, so **`mongosh` connects to `127.0.0.1` without `--tls`** for init (plain localhost is allowed). Using `--tls` without `--tlsCAFile` can cause `MongoServerSelectionError` / connection closed.
-- Init creates `/var/lib/mongodb/.rs-initialized` when finished. If `.rs-initialized` is missing and `mongosh` works, run `sudo systemctl start mongodb-init.service` once.
-- Quick check: `mongosh "mongodb://127.0.0.1:27017/" --eval 'db.adminCommand({ ping: 1 })'` should return `{ ok: 1 }`.
-
-**Symlinks (`/etc` → `/usr/share`)**
-
-```bash
-sudo readlink -f /etc/mongod.conf /etc/nginx/nginx.conf /etc/valkey/valkey.conf /etc/rabbitmq/rabbitmq.conf
-```
-
-`/etc/valkey` is root-only; use `sudo` when listing.
-
-**Stack health**
-
-```bash
-curl -sfS http://127.0.0.1:8080/health
-curl -sfS http://127.0.0.1/health
-valkey-cli -h 127.0.0.1 ping
-sudo rabbitmq-diagnostics ping
-```
-
-**`hello` file logs (`hello.service`)**
-
-`hello` uses `User=hello` (static user via `sysusers.d/hello.conf`), `StateDirectory=bootc-testboot/hello`, and `LogsDirectory=bootc-testboot/hello`.
-
-**Environment (structured logging via `log/slog`):** `LOG_FILE` (default in unit: `/var/log/bootc-testboot/hello/hello.log`), optional `LOG_LEVEL` (`debug`|`info`|`warn`|`error`, default `info`), `LOG_FORMAT` (`text`|`json`, default `text`). Optional `LISTEN_ADDR` for bind address (default `:8080`). The app writes the same formatted lines to **stdout** (journald) and to **`LOG_FILE`** when set—use `journalctl` for live ops; use the file for tail/grep on disk.
-
-- **`/var/log/bootc-testboot/hello/hello.log`** — application log (duplicate of journal for the same lines when `LOG_FILE` is set).
-- **`/var/log/bootc-testboot/hello/healthcheck.log`** — `ExecStartPost` / `healthcheck.sh` when `LOG_FILE` is set (also on stderr / journal).
-
-**Rotation:** `logrotate` ships [`/etc/logrotate.d/hello`](../../bootc/apps/hello/rootfs/etc/logrotate.d/hello) for `/var/log/bootc-testboot/hello/*.log` (`copytruncate`, `su hello hello`). Do not run a second rotator on the same paths.
-
-```bash
-journalctl -u hello.service -b --no-pager
-ls -la /var/log/bootc-testboot/hello
-readlink /var/log/bootc-testboot/hello 2>/dev/null || true
-ls -la /var/log/private/ 2>/dev/null
-sudo tail -n 50 /var/log/bootc-testboot/hello/hello.log
-sudo tail -n 50 /var/log/bootc-testboot/hello/healthcheck.log
-```
-
-**`arptables` / `rdisc`**
-
-On cloud VMs these are often unnecessary. The image ships **`iptables`**, **`arptables`**, **`iputils`**, a minimal `/etc/sysconfig/arptables`, and leaves **`arptables.service`** and **`rdisc.service` disabled** so they do not show as failed by default. If you still see old failures from a previous image, you can clear state with `sudo systemctl reset-failed` after upgrading. To opt in: `sudo systemctl enable --now arptables.service` (only if you need ARP filtering) or `rdisc` only on networks where ICMP router discovery is appropriate.
+For the full post-deploy VM audit checklist (services, SELinux, MongoDB, symlinks, logs), see
+[005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md#post-deploy-vm-audit-checklist).
 
 ### `podman run` hangs or exits immediately
 

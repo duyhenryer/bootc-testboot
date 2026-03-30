@@ -96,11 +96,12 @@ Makefile                   Run `make help` — base, build, audit, verify-ghcr, 
 ## Adding a New App
 
 1. Create `repos/myapp/` with `main.go`, `go.mod`
-2. Create systemd unit: `bootc/apps/myapp/rootfs/usr/lib/systemd/system/myapp.service` (must include `WantedBy=multi-user.target`)
-3. Add tmpfiles if needed: `bootc/apps/myapp/rootfs/usr/lib/tmpfiles.d/myapp.conf`
-4. If web-facing, add nginx vhost: `bootc/apps/myapp/rootfs/usr/share/nginx/conf.d/myapp.conf` (immutable)
-5. `make build` -- auto-discovers all `repos/*/` and `bootc/apps/*/`, auto-enables all services
-6. `make test-smoke` -- verify everything is in place before deploying
+2. Create systemd unit: `bootc/apps/myapp/rootfs/usr/lib/systemd/system/myapp.service` (must include `User=myapp`, `WantedBy=multi-user.target`)
+3. Create static user: `bootc/apps/myapp/rootfs/usr/lib/sysusers.d/myapp.conf` with `u myapp - "myapp service" /var/lib/bootc-testboot/myapp /usr/sbin/nologin` and `m myapp bootc-apps`
+4. Add tmpfiles if needed: `bootc/apps/myapp/rootfs/usr/lib/tmpfiles.d/myapp.conf`
+5. If web-facing, add nginx vhost: `bootc/apps/myapp/rootfs/usr/share/nginx/conf.d/myapp.conf` (immutable)
+6. `make build` -- auto-discovers all `repos/*/` and `bootc/apps/*/`, auto-enables all services
+7. `make test-smoke` -- verify everything is in place before deploying
 
 ## CI Architecture (Distribution Model)
 
@@ -168,7 +169,7 @@ podman export $ctr | tar -tv
 podman rm $ctr
 ```
 
-For scripted verification of **all** published tags (skopeo + optional full `podman pull`), run `./scripts/verify-ghcr-packages.sh` or `make verify-ghcr` — see [docs/project/008-ghcr-audit.md](docs/project/008-ghcr-audit.md). Public GHCR images need no login; large pulls need tens of GB free disk — use `VERIFY_SKIP_PULL=1` for metadata-only.
+For scripted verification of **all** published tags (skopeo + optional full `podman pull`), run `./scripts/verify-ghcr-packages.sh` or `make verify-ghcr` — see [docs/project/005-ghcr-audit-and-post-deploy.md](docs/project/005-ghcr-audit-and-post-deploy.md). Public GHCR images need no login; large pulls need tens of GB free disk — use `VERIFY_SKIP_PULL=1` for metadata-only.
 
 ## Versioning & Tagging
 
@@ -232,8 +233,9 @@ Read these first to understand how bootc works.
 | [009](docs/bootc/009-base-distro-comparison.md) | Base Distro Comparison |
 | [010](docs/bootc/010-ubuntu-bootc-status.md) | Ubuntu bootc Status |
 | [011](docs/bootc/011-bootc-vision.md) | bootc Vision |
-| [012](docs/bootc/012-bootc-limitations.md) | bootc Limitations |
+| [012](docs/bootc/012-bootc-limitations.md) | bootc + bootc-image-builder Limitations |
 | [013](docs/bootc/013-bootc-image-builder-guide.md) | bootc-image-builder for Newbies |
+| [014](docs/bootc/014-production-tuning-guide.md) | Production Tuning Guide (use cases, customizations, readiness checklist) |
 
 ### Our Project (`docs/project/`)
 
@@ -242,10 +244,8 @@ How we use bootc to build, test, and deliver our product.
 | Doc | Topic |
 |-----|-------|
 | [001](docs/project/001-architecture-overview.md) | Architecture Overview |
-| [002](docs/project/002-building-bootc-images.md) | Building Our Images |
-| [003](docs/project/003-walkthrough-and-runbook.md) | Walkthrough and operations runbook (E2E + day-2 ops) |
-| [004](docs/project/004-manual-build-and-deployment.md) | Manual build and VM deployment (includes bootc-image-builder reference) |
-| [005](docs/project/005-production-upgrade-scenarios.md) | Production Upgrade Scenarios |
-| [006](docs/project/006-testing-guide-and-registry.md) | Local testing and test case registry (incl. post-deploy audit / troubleshooting) |
-| [007](docs/project/007-rootfs-overlay-guide.md) | Rootfs Overlay Guide (build-time to runtime mapping) |
-| [008](docs/project/008-ghcr-audit.md) | GHCR audit (`verify-ghcr-packages.sh`, skopeo, podman) |
+| [002](docs/project/002-building-images.md) | Building Images (bootc patterns, rootfs overlay, immutable config strategy) |
+| [003](docs/project/003-deploying-and-upgrading.md) | Deploying and Upgrading (walkthrough, disk images, all targets, ops runbook) |
+| [004](docs/project/004-testing-guide.md) | Testing Guide (3-level testing, TC registry, troubleshooting) |
+| [005](docs/project/005-ghcr-audit-and-post-deploy.md) | GHCR Audit and Post-Deploy Verification |
+| [006](docs/project/006-selinux-reference.md) | SELinux Reference (MongoDB FTDC, case studies, build-time policy) |

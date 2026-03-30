@@ -18,16 +18,11 @@ RUN chmod 0440 /etc/sudoers.d/wheel-nopasswd
 # --- Firewall base rules ---
 RUN firewall-offline-cmd --zone=public --add-port=22/tcp
 
-# --- Base user ---
-RUN useradd -r -m -d /var/home/appuser -s /bin/bash appuser && \
-    usermod -aG wheel appuser
-
 # --- Enable base services ---
 RUN systemctl enable cloud-init sshd firewalld chronyd systemd-resolved NetworkManager
 
-# --- Clean /var and /run artifacts from package install + useradd ---
-RUN rm -rf /var/home/appuser/.bash* \
-    /var/lib/dnf /var/lib/rhsm \
+# --- Clean /var and /run artifacts from package install ---
+RUN rm -rf /var/lib/dnf /var/lib/rhsm \
     /var/log/{dnf*,hawkey*,rhsm} /var/log/sa \
     /var/cache/{dnf,ldconfig,libdnf5} \
     /var/roothome/buildinfo \
