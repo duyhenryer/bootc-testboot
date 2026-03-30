@@ -1,4 +1,4 @@
-# hello.service: app + healthcheck logs (DynamicUser=hello; fd kept open — use copytruncate)
+# hello.service: app + healthcheck logs (User=hello; fd kept open — use copytruncate)
 /var/log/bootc-testboot/hello/*.log {
     weekly
     rotate 4

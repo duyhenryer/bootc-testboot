@@ -152,7 +152,7 @@ The image is a bootc container, which means it has `bash`, `systemctl`, and `boo
 
 | Sub-check | What | Pass criteria |
 |-----------|------|---------------|
-| tmpfiles.d | `/var/log/nginx`, `/var/lib/testboot` after `systemd-tmpfiles --create` | Directories exist |
+| tmpfiles.d | `/var/log/nginx`, `/var/lib/bootc-testboot` after `systemd-tmpfiles --create` | Directories exist |
 | App health | `hello` responds to `/health` | HTTP response contains expected body |
 
 **Flags used:** `--read-only`, `--tmpfs /var`, `--tmpfs /run`, `--tmpfs /tmp` (see **How it works under the hood** below).
@@ -169,7 +169,7 @@ make test-integration
 ==> Integration testing ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest (read-only /usr)
 --- Verifying tmpfiles.d creates /var dirs ---
   OK: /var/log/nginx
-  OK: /var/lib/testboot
+  OK: /var/lib/bootc-testboot
 --- Starting hello service directly ---
   OK: hello /health responded
 ALL INTEGRATION TESTS PASSED
@@ -483,7 +483,7 @@ podman run --rm <image> bash -c '
 | File | Directories declared |
 |------|---------------------|
 | `base-requirements.conf` | `/var/lib/cloud`, `/var/lib/dhcpcd`, `/var/lib/dhclient`, `/var/lib/pcp`, `/var/lib/rhsm`, `/var/home/appuser` |
-| `testboot-common.conf` | `/var/lib/testboot`, `/var/log/testboot` |
+| `testboot-common.conf` | `/var/lib/bootc-testboot`, `/var/log/bootc-testboot` |
 | `nginx.conf` | `/var/lib/nginx`, `/var/lib/nginx/tmp`, `/var/log/nginx` |
 | `mongodb.conf` | `/var/lib/mongodb`, `/var/log/mongodb` |
 | `valkey.conf` | `/var/lib/valkey`, `/var/log/valkey` |
@@ -674,7 +674,7 @@ sudo rabbitmq-diagnostics ping
 
 **`hello` file logs (`hello.service`)**
 
-`hello` uses `DynamicUser=yes`, `StateDirectory=bootc-testboot/hello`, and `LogsDirectory=bootc-testboot/hello`. Under `/var/log/`, the directory may appear as a symlink into `/var/log/private/...` (expected).
+`hello` uses `User=hello` (static user via `sysusers.d/hello.conf`), `StateDirectory=bootc-testboot/hello`, and `LogsDirectory=bootc-testboot/hello`.
 
 **Environment (structured logging via `log/slog`):** `LOG_FILE` (default in unit: `/var/log/bootc-testboot/hello/hello.log`), optional `LOG_LEVEL` (`debug`|`info`|`warn`|`error`, default `info`), `LOG_FORMAT` (`text`|`json`, default `text`). Optional `LISTEN_ADDR` for bind address (default `:8080`). The app writes the same formatted lines to **stdout** (journald) and to **`LOG_FILE`** when set—use `journalctl` for live ops; use the file for tail/grep on disk.
 

@@ -5,7 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-DynamicUser=yes
+User=hello
+Group=hello
 StateDirectory=bootc-testboot/hello
 LogsDirectory=bootc-testboot/hello
 Environment=LOG_FILE=/var/log/bootc-testboot/hello/hello.log
