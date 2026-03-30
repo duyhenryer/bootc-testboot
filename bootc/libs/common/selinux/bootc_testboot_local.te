@@ -18,10 +18,10 @@
 module bootc_testboot_local 1.0;
 
 require {
-    type systemd_tmpfile_t;
+    type systemd_tmpfiles_t;
     class capability sys_resource;
 }
 
 # systemd-tmpfiles: allow CAP_SYS_RESOURCE for creating /var directories
 # on dedicated EXT4 partitions with reserved blocks.
-allow systemd_tmpfile_t self:capability sys_resource;
+allow systemd_tmpfiles_t self:capability sys_resource;

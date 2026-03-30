@@ -9,6 +9,8 @@ on:
       - '.github/workflows/build-base.yml'
       - '.github/actions/**'
     tags: ['base-v*']      # Release: git tag base-v1.0.0
+  schedule:
+    - cron: '0 6 * * 1'   # Weekly Monday 06:00 UTC — pick up base image security patches
   workflow_call:
   workflow_dispatch:
     inputs:

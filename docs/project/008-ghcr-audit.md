@@ -115,6 +115,80 @@ Checks marked [FAIL]: 0
 Overall: PASSED
 ```
 
+## Post-deploy VM audit checklist
+
+After deploying a disk image (QCOW2, OVA, AMI) to a VM, SSH in and run this checklist to verify
+the system is healthy. Copy-paste the block below as a single `sudo bash -c '...'` command.
+
+### Quick one-liner
+
+> **Note:** Credential files (`.admin-pw`, `.keyFile`) are owned by `mongod:mongod` with
+> restricted permissions. All commands below use `sudo` — this is the correct security posture,
+> not a bug. Do not weaken file permissions to avoid `sudo`.
+
+```bash
+sudo bash -c '
+echo "=== Failed units ===" && systemctl --failed
+echo "=== SELinux ===" && getenforce && semodule -l | grep -E "mongodb|bootc"
+echo "=== MongoDB setup log ===" && journalctl -u mongodb-setup --no-pager -q
+echo "=== MongoDB init log ===" && journalctl -u mongodb-init --no-pager -q
+echo "=== Mongod status ===" && systemctl is-active mongod
+echo "=== Credentials ===" && ls -la /var/lib/mongodb/.admin-pw /var/lib/mongodb/.keyFile /var/lib/mongodb/.rs-initialized /var/lib/mongodb/tls/ 2>&1
+echo "=== Connectivity ===" && mongosh --quiet "mongodb://admin:$(cat /var/lib/mongodb/.admin-pw)@127.0.0.1:27017/admin?authSource=admin" --eval "print(JSON.stringify({rs: rs.status().ok, members: rs.status().members.length}))" 2>&1
+echo "=== AVC denials ===" && ausearch -m AVC --start today 2>/dev/null | head -5 || echo "none"
+echo "=== Services ===" && systemctl is-active nginx valkey rabbitmq-server hello 2>&1
+echo "=== Symlinks ===" && readlink /etc/mongod.conf /etc/nginx/nginx.conf /etc/valkey/valkey.conf /etc/rabbitmq/rabbitmq.conf
+'
+```
+
+### What each check verifies
+
+| # | Check | Healthy | Problem |
+|---|-------|---------|---------|
+| 1 | `systemctl --failed` | No failed units | Any unit listed |
+| 2 | `getenforce` | `Enforcing` | `Permissive` or `Disabled` |
+| 3 | `semodule -l \| grep mongodb` | `mongodb`, `mongodb_ftdc_local`, `bootc_testboot_local` | Missing module = build-time `semodule` failed |
+| 4 | `journalctl -u mongodb-setup` | Shows gen-password, gen-tls-cert, gen-keyFile, "setup complete" | Missing steps or errors |
+| 5 | `journalctl -u mongodb-init` | Shows Step 1/2 (rs0), Step 2/2 (admin user), "complete" | "not authorized" or timeout |
+| 6 | `systemctl is-active mongod` | `active` | `failed` — check `journalctl -u mongod` |
+| 7 | Credential files exist | `.admin-pw`, `.keyFile`, `.rs-initialized`, `tls/` all present | Missing file = setup or init failed partway |
+| 8 | `mongosh` connectivity | `{"rs":1,"members":1}` | Auth error = wrong password; connection refused = mongod down |
+| 9 | `ausearch -m AVC` | Empty or `none` | `mongod_t` / `systemd_tmpfile_t` denials = SELinux module gap |
+| 10 | Other services active | `nginx`, `valkey`, `rabbitmq-server`, `hello` all `active` | Check `journalctl -u <service>` for the failing one |
+| 11 | Symlinks intact | All point to `/usr/share/<service>/` | Broken symlink = rootfs overlay or Containerfile issue |
+
+### Individual deep-dive commands
+
+```bash
+# Full MongoDB setup journal (credentials + TLS generation)
+sudo journalctl -u mongodb-setup --no-pager
+
+# Full MongoDB init journal (rs0 + admin user creation)
+sudo journalctl -u mongodb-init --no-pager
+
+# Mongod runtime log (persistent across reboots)
+sudo tail -30 /var/log/mongodb/mongod.log
+
+# SELinux context on MongoDB data directory
+ls -laZ /var/lib/mongodb/
+
+# Read the admin password (requires sudo — file is owned by mongod:mongod)
+sudo cat /var/lib/mongodb/.admin-pw
+
+# FTDC is collecting (proves no SELinux denials blocking proc reads)
+sudo mongosh --quiet "mongodb://admin:$(sudo cat /var/lib/mongodb/.admin-pw)@127.0.0.1:27017/admin?authSource=admin" \
+  --eval 'print("FTDC total: " + db.serverStatus().metrics.commands.serverStatus.total)'
+
+# All AVC denials from today
+sudo ausearch -m AVC --start today 2>/dev/null
+
+# bootc image version and labels
+rpm-ostree status
+bootc status
+```
+
+---
+
 ## Related documentation
 
 - [004-manual-build-and-deployment.md](004-manual-build-and-deployment.md) — Artifact path reference  

@@ -9,6 +9,8 @@ on:
       - "repos/**"
       - "base/**"
       - "bootc/**"
+  schedule:
+    - cron: '0 8 * * 1'   # Weekly Monday 08:00 UTC — rebuild app image after base refresh
   workflow_dispatch:
     inputs:
       base_distro:
