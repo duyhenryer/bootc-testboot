@@ -305,7 +305,7 @@ Shared utility scripts and system definitions used by all services and apps.
 | `bootc/libs/common/rootfs/usr/libexec/testboot/wait-for-service.sh` | `/usr/libexec/testboot/wait-for-service.sh` | Read-only | TCP readiness probe (polls host:port) |
 | `bootc/libs/common/rootfs/usr/libexec/testboot/healthcheck.sh` | `/usr/libexec/testboot/healthcheck.sh` | Read-only | HTTP health endpoint check |
 | `bootc/libs/common/rootfs/usr/libexec/testboot/gen-tls-cert.sh` | `/usr/libexec/testboot/gen-tls-cert.sh` | Read-only | Self-signed TLS cert generator (CA + server) |
-| `bootc/libs/common/rootfs/usr/lib/sysusers.d/bootc-apps.conf` | `/usr/lib/sysusers.d/bootc-apps.conf` | Read-only | Creates shared `bootc-apps` group for all Go app services |
+| `bootc/libs/common/rootfs/usr/lib/sysusers.d/apps.conf` | `/usr/lib/sysusers.d/apps.conf` | Read-only | Creates shared `apps` group for all Go app services |
 | `bootc/libs/common/rootfs/usr/lib/tmpfiles.d/testboot-common.conf` | `/usr/lib/tmpfiles.d/testboot-common.conf` | Read-only | Creates shared `/var` directories at boot |
 | `bootc/libs/common/rootfs/etc/sysconfig/arptables` | `/etc/sysconfig/arptables` | Mutable | Minimal ARP rules so `arptables.service` is not `NOTCONFIGURED` if enabled; image ships the unit **disabled** by default |
 | `bootc/libs/common/rootfs/usr/lib/systemd/system-preset/99-bootc-testboot.preset` | `/usr/lib/systemd/system-preset/99-bootc-testboot.preset` | Read-only | Preset: `disable` `arptables.service` and `rdisc.service` (cloud-friendly defaults) |
@@ -370,6 +370,8 @@ Plus symlinks: `/etc/nginx/nginx.conf` -> `/usr/share/nginx/nginx.conf`, `/etc/n
 | `bootc/services/rabbitmq/rootfs/usr/lib/tmpfiles.d/rabbitmq.conf` | `/usr/lib/tmpfiles.d/rabbitmq.conf` | Read-only | Creates RabbitMQ `/var` dirs at boot |
 
 Plus a symlink: `/etc/rabbitmq/rabbitmq.conf` -> `/usr/share/rabbitmq/rabbitmq.conf`
+
+> **Note:** Unlike MongoDB (which has `mongodb-setup.service` and `mongodb-init.service` for credential and TLS generation), RabbitMQ currently uses default `guest:guest` credentials from `rabbitmq.conf`. A dedicated `rabbitmq-setup.service` for automated credential rotation is a planned future improvement. The `testboot-app-setup.sh` script gracefully falls back to default credentials when `/var/lib/rabbitmq/.admin-pw` is absent.
 
 ### apps/hello
 
@@ -459,7 +461,7 @@ ExecStartPre=/usr/libexec/testboot/gen-password.sh /var/lib/mongodb/password 48
 ExecStartPre=/usr/libexec/testboot/wait-for-service.sh 127.0.0.1 27017 30
 ```
 
-Also includes `sysusers.d` (the `bootc-apps` shared group) and `tmpfiles.d` (directory definitions for shared resources under `/var/lib/bootc-testboot/shared/`).
+Also includes `sysusers.d` (the `apps` shared group) and `tmpfiles.d` (directory definitions for shared resources under `/var/lib/bootc-testboot/shared/`).
 
 ### services -- Middleware daemons
 
@@ -534,6 +536,76 @@ flowchart LR
 ### When customers need overrides
 
 If a customer needs custom settings (e.g., different MongoDB bind address), they should use systemd drop-in overrides or environment files in `/etc`, not edit the config directly. This is documented in [003-deploying-and-upgrading.md](003-deploying-and-upgrading.md).
+
+---
+
+## Permission Model (Three Roles)
+
+The project uses three distinct user/group roles for security and isolation:
+
+| Role | Entity | Created by | Purpose |
+|------|--------|------------|---------|
+| **Operator** | `devops` | `bootc-image-builder` config.toml | SSH login, debugging, administration (wheel group) |
+| **Shared ACL** | `apps` (group only) | `sysusers.d` | Read access to shared env files |
+| **App runtime** | `hello`, `api`, etc. | `sysusers.d` (per-app, nologin) | Run app services with isolation |
+
+### How shared credentials flow
+
+```
+testboot-app-setup.service (runs as root)
+  │
+  ├─ writes mongodb.env, valkey.env, rabbitmq.env
+  │   owner: root:apps  mode: 0640
+  │
+  └─ into /var/lib/bootc-testboot/shared/env/
+      owner: root:apps  mode: 0750
+```
+
+Per-app users (e.g., `hello`) can read these files because they are members of the `apps` group (via `m hello apps` in sysusers.d). The operator (`devops`, created by bootc-image-builder) is NOT in `apps` — uses `sudo` to inspect credentials if needed.
+
+> **Note:** Interactive login users (like `devops`) are created via `bootc-image-builder` config.toml at disk image build time — NOT via `sysusers.d`. Per [bootc](https://docs.fedoraproject.org/en-US/bootc/authentication/) and [systemd-sysusers](https://www.freedesktop.org/software/systemd/man/latest/systemd-sysusers.html) guidelines, `sysusers.d` is for system service accounts only.
+
+### Directory ownership summary
+
+| Path | Owner | Mode | Who can read |
+|------|-------|------|-------------|
+| `/var/lib/bootc-testboot/` | `root:root` | 0755 | Everyone |
+| `/var/lib/bootc-testboot/shared/` | `root:apps` | 0750 | root + app services |
+| `/var/lib/bootc-testboot/shared/env/*.env` | `root:apps` | 0640 | root + app services |
+| `/var/lib/bootc-testboot/<app>/` | `<app>:<app>` | via StateDirectory | Only that app + root |
+
+### The `apps` group
+
+The shared group is defined in `bootc/libs/common/rootfs/usr/lib/sysusers.d/apps.conf`:
+
+```
+g apps -                    # shared group definition
+```
+
+Each app user joins the group via `m <app> apps` in its sysusers.d config. The group controls read access to shared infra credentials (`root:apps 0640`).
+
+```
+g apps -                    # shared group (sysusers.d/apps.conf)
+m hello apps                # hello joins the group
+m api apps                  # future: api joins too
+m worker apps               # future: worker joins too
+
+root:apps 0640              # env files: root writes, apps group reads
+```
+
+All files under `/var/lib/bootc-testboot/shared/env/` and `/var/lib/bootc-testboot/shared/tls/` use `root:apps` ownership — root writes via `testboot-app-setup.service`, app services read via group membership.
+
+### Adding a new app user
+
+Every new app needs a sysusers.d config following this pattern:
+
+```
+# bootc/apps/<app>/rootfs/usr/lib/sysusers.d/<app>.conf
+u <app> - "<app> service" /var/lib/bootc-testboot/<app> /usr/sbin/nologin
+m <app> apps
+```
+
+The `m <app> apps` line grants the app access to shared infra credentials.
 
 ---
 

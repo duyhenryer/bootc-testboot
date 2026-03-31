@@ -1469,7 +1469,7 @@ on first boot.
 | `/var/log/bootc-testboot/` | `root` | Parent for all app log dirs | Yes | Yes |
 | `/var/lib/bootc-testboot/hello/` | `hello` | Hello app state | Yes | Yes |
 | `/var/log/bootc-testboot/hello/` | `hello` | Hello app + healthcheck logs | Yes | Yes |
-| `/var/lib/bootc-testboot/shared/` | `root:bootc-apps` | Shared resources (TLS CA, env files) | Yes | Yes |
+| `/var/lib/bootc-testboot/shared/` | `root:apps` | Shared resources (TLS CA, env files) | Yes | Yes |
 | `/var/lib/cloud/` | `root` | cloud-init state | Yes | Yes |
 
 > **Critical:** content you `COPY` into `/var/` in the Containerfile is only unpacked on
