@@ -1,0 +1,14 @@
+[Unit]
+Description=Generate shared infra env files for application services
+After=mongodb-init.service valkey.service rabbitmq-server.service
+Wants=mongodb-init.service valkey.service rabbitmq-server.service
+ConditionPathExists=!/var/lib/bootc-testboot/shared/.app-setup-done
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=LOG_FILE=/var/log/bootc-testboot/app-setup.log
+ExecStart=/usr/libexec/testboot/testboot-app-setup.sh
+
+[Install]
+WantedBy=multi-user.target
