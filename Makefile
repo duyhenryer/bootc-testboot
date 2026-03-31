@@ -1,4 +1,4 @@
-.PHONY: base apps build test lint lint-strict test-smoke test-integration audit verify-ghcr help clean
+.PHONY: base apps build test lint lint-strict test-smoke test-integration audit verify-ghcr validate-ports help clean
 
 # ---------------------------------------------------------------------------
 # Variables (override via env or command line)
@@ -126,7 +126,7 @@ test-integration: build ## Integration test: run app in read-only mode (simulate
 		done; \
 		echo "--- Starting hello service directly ---"; \
 		/usr/bin/hello & PID=$$!; sleep 1; \
-		RESP=$$(curl -sf http://127.0.0.1:8080/health 2>/dev/null); \
+		RESP=$$(curl -sf http://127.0.0.1:8000/health 2>/dev/null); \
 		kill $$PID 2>/dev/null; \
 		if echo "$$RESP" | grep -q "ok"; then echo "  OK: hello /health responded"; \
 		else echo "  FAIL: hello /health did not respond"; exit 1; fi; \
@@ -150,6 +150,9 @@ audit: apps ## Build + strict-lint ALL base images and app image locally
 	@$(PODMAN) run --rm $(APP_IMAGE_REF):latest \
 		bootc container lint --fatal-warnings
 	@echo "=== ALL AUDIT CHECKS PASSED ==="
+
+validate-ports: ## Validate app port assignments (range, uniqueness, env ↔ nginx)
+	@./bootc/libs/common/rootfs/usr/libexec/testboot/validate-ports.sh
 
 verify-ghcr: ## Pull + verify all GHCR packages (scripts/verify-ghcr-packages.sh; needs disk space)
 	@./scripts/verify-ghcr-packages.sh

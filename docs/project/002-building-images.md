@@ -607,6 +607,21 @@ m <app> apps
 
 The `m <app> apps` line grants the app access to shared infra credentials.
 
+### Port allocation convention
+
+Web-facing apps behind nginx use ports in the range **8000-8099**. Each app gets a unique port defined in its env file (`LISTEN_ADDR`) and matching nginx upstream config.
+
+| App | Port | Status |
+|-----|------|--------|
+| hello | 8000 | Active |
+| api | 8001 | Future |
+| worker | — | No HTTP (background processing) |
+| scheduler | — | No HTTP (cron-like) |
+
+Not all apps need a port — only those serving HTTP behind nginx.
+
+**Validation:** Run `make validate-ports` to check range, uniqueness, and env-nginx consistency. The script scans all `bootc/apps/*/rootfs/` for `LISTEN_ADDR` in env files and `server 127.0.0.1:<port>` in nginx configs, then cross-checks them.
+
 ---
 
 ## How to Add New Components

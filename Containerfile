@@ -95,7 +95,7 @@ RUN setsebool -P httpd_can_network_connect 1 || true
 
 # --- Firewall rules ---
 RUN firewall-offline-cmd --zone=public \
-    --add-port=80/tcp --add-port=443/tcp --add-port=8080/tcp \
+    --add-port=80/tcp --add-port=443/tcp --add-port=8000/tcp \
     --add-port=6379/tcp --add-port=27017/tcp \
     --add-port=5672/tcp --add-port=15672/tcp
 

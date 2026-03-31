@@ -4,7 +4,7 @@ Small HTTP service (`/` JSON, `/health`). Logging uses [`log/slog`](https://pkg.
 
 | Variable | Description |
 |----------|-------------|
-| `LISTEN_ADDR` | Listen address (default `:8080`) |
+| `LISTEN_ADDR` | Listen address (default `:8000`) |
 | `LOG_LEVEL` | `debug`, `info`, `warn`, `error` (default `info`) |
 | `LOG_FORMAT` | `text` or `json` (default `text`) |
 | `LOG_FILE` | Optional path; when set, same log lines go to stdout and this file (append) |

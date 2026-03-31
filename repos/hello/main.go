@@ -29,7 +29,7 @@ func main() {
 	mux.HandleFunc("/", handleRoot)
 	mux.HandleFunc("/health", handleHealth)
 
-	addr := ":8080"
+	addr := ":8000"
 	if v := os.Getenv("LISTEN_ADDR"); v != "" {
 		addr = v
 	}

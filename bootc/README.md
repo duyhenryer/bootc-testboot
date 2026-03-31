@@ -84,7 +84,7 @@ log_info "Starting database migration"
 /usr/libexec/testboot/wait-for-service.sh 127.0.0.1 27017 60
 
 # Verify the app is healthy after startup
-/usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8080/health 10
+/usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8000/health 10
 
 # Generate self-signed TLS certs on first boot (idempotent)
 /usr/libexec/testboot/gen-tls-cert.sh /var/lib/myapp/tls localhost

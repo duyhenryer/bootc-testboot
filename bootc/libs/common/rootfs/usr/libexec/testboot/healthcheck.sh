@@ -7,7 +7,7 @@
 #   status:   Expected HTTP status code (default: 200)
 #
 # Example in a systemd unit:
-#   ExecStartPost=/usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8080/health 10
+#   ExecStartPost=/usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8000/health 10
 
 set -euo pipefail
 source /usr/libexec/testboot/log.sh

@@ -4,7 +4,7 @@
 #
 # Usage:
 #   source /usr/libexec/testboot/log.sh
-#   log_info  "Service starting on port 8080"
+#   log_info  "Service starting on port 8000"
 #   log_warn  "Config not found, using defaults"
 #   log_error "Connection refused"
 #
