@@ -474,7 +474,7 @@ podman run --rm <image> bash -c '
   cat /usr/lib/tmpfiles.d/mongodb.conf
   cat /usr/lib/tmpfiles.d/valkey.conf
   cat /usr/lib/tmpfiles.d/rabbitmq.conf
-  cat /usr/lib/sysusers.d/bootc-apps.conf
+  cat /usr/lib/sysusers.d/apps.conf
 '
 ```
 
@@ -493,7 +493,7 @@ podman run --rm <image> bash -c '
 
 | File | User |
 |------|------|
-| `bootc-apps.conf` | `bootc-apps` group (shared group for all Go app services) |
+| `apps.conf` | `apps` group (shared group for all Go app services) |
 
 ### TC-08e: Middleware Immutable Configs
 
@@ -608,7 +608,7 @@ bootc-testboot/
 | `/var/lib/pcp/config/` | CentOS pcp package | Sub-directories not declared in upstream tmpfiles.d |
 | `/var/roothome/buildinfo/` | CentOS build metadata | Baked into the base image at compose time |
 | `/var/lib/rhsm/productid.js` | Red Hat Subscription Manager | File (not directory) in /var |
-| `/var/lib/bootc-testboot/shared/` | Shared app resources | TLS CA certs, environment files (owned by `root:bootc-apps`) |
+| `/var/lib/bootc-testboot/shared/` | Shared app resources | TLS CA certs, environment files (owned by `root:apps`) |
 
 - **Resolution:** These warnings cannot be fixed without modifying the CentOS base image itself. Use `make lint` (without `--fatal-warnings`) for local testing.
 

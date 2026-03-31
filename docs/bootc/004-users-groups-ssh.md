@@ -128,15 +128,24 @@ u myapp 48 "My application user" /var/lib/myapp /usr/sbin/nologin
 - `/var/lib/myapp` = home directory
 - `/usr/sbin/nologin` = shell (no interactive login)
 
-This project uses sysusers.d for `appuser` and `dhcpcd`:
+This project uses sysusers.d for **system service accounts only** (per bootc and systemd-sysusers guidelines). Interactive login users (e.g., `devops`) are created via `bootc-image-builder` config.toml — see `builder/*/config.toml`.
+
+Example system user (for the `dhcpcd` package):
 
 ```
-# base/rootfs/usr/lib/sysusers.d/appuser.conf
-u appuser - "Application User" /var/home/appuser /bin/bash
-m appuser wheel
+# base/rootfs/usr/lib/sysusers.d/dhcpcd.conf
+u dhcpcd - "Minimalistic DHCP client" /var/lib/dhcpcd /usr/sbin/nologin
 ```
 
-The `m appuser wheel` line adds `appuser` to the `wheel` group (sudo access).
+Example per-app service user:
+
+```
+# bootc/apps/hello/rootfs/usr/lib/sysusers.d/hello.conf
+u hello - "hello service" /var/lib/bootc-testboot/hello /usr/sbin/nologin
+m hello apps
+```
+
+The `m hello apps` line adds `hello` to the shared `apps` group for reading infra credentials.
 
 **Upstream note:** Avoid non-root-owned files under **`/usr`** that depend on sysusers-managed identities (except rare cases like setuid binaries, which you should avoid anyway). Mutable identity and data belong under **`/var`** (or paths symlinked there).
 
@@ -597,7 +606,7 @@ How the theory above maps to actual files in this codebase:
 
 | File | What it does |
 |------|-------------|
-| `base/rootfs/usr/lib/sysusers.d/appuser.conf` | Creates `appuser` at boot via sysusers (not at build time) |
+| `bootc/apps/hello/rootfs/usr/lib/sysusers.d/hello.conf` | Creates `hello` system user at boot via sysusers (member of `apps`) |
 | `base/rootfs/usr/lib/sysusers.d/dhcpcd.conf` | Satisfies `bootc container lint` for dhcpcd package |
 | `base/rootfs/etc/ssh/sshd_config.d/99-hardening.conf` | Disables root login, password auth, limits auth attempts |
 | `builder/gce/config.toml` | Injects `devops` user + SSH key for GCE disk images |

@@ -97,7 +97,7 @@ Makefile                   Run `make help` — base, build, audit, verify-ghcr, 
 
 1. Create `repos/myapp/` with `main.go`, `go.mod`
 2. Create systemd unit: `bootc/apps/myapp/rootfs/usr/lib/systemd/system/myapp.service` (must include `User=myapp`, `WantedBy=multi-user.target`)
-3. Create static user: `bootc/apps/myapp/rootfs/usr/lib/sysusers.d/myapp.conf` with `u myapp - "myapp service" /var/lib/bootc-testboot/myapp /usr/sbin/nologin` and `m myapp bootc-apps`
+3. Create static user: `bootc/apps/myapp/rootfs/usr/lib/sysusers.d/myapp.conf` with `u myapp - "myapp service" /var/lib/bootc-testboot/myapp /usr/sbin/nologin` and `m myapp apps`
 4. Add tmpfiles if needed: `bootc/apps/myapp/rootfs/usr/lib/tmpfiles.d/myapp.conf`
 5. If web-facing, add nginx vhost: `bootc/apps/myapp/rootfs/usr/share/nginx/conf.d/myapp.conf` (immutable)
 6. `make build` -- auto-discovers all `repos/*/` and `bootc/apps/*/`, auto-enables all services
