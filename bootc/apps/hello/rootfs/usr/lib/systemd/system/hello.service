@@ -1,7 +1,7 @@
 [Unit]
 Description=Hello World HTTP Service
-After=network-online.target
-Wants=network-online.target
+After=network-online.target testboot-app-setup.service
+Wants=network-online.target testboot-app-setup.service
 
 [Service]
 Type=simple
@@ -10,7 +10,14 @@ Group=hello
 StateDirectory=bootc-testboot/hello
 LogsDirectory=bootc-testboot/hello
 Environment=LOG_FILE=/var/log/bootc-testboot/hello/hello.log
-# LOG_LEVEL=info LOG_FORMAT=text|json — see repos/hello
+# Tier 1: immutable defaults (image-versioned)
+EnvironmentFile=/usr/share/bootc-testboot/hello/hello.env
+# Tier 2: shared infra secrets (declare only what this app uses)
+# EnvironmentFile=-/var/lib/bootc-testboot/shared/env/mongodb.env
+# EnvironmentFile=-/var/lib/bootc-testboot/shared/env/valkey.env
+# EnvironmentFile=-/var/lib/bootc-testboot/shared/env/rabbitmq.env
+# Tier 3: per-app secret overrides
+EnvironmentFile=-/var/lib/bootc-testboot/hello/hello.secrets.overrides
 ExecStart=/usr/bin/hello
 ExecStartPost=/usr/bin/env LOG_FILE=/var/log/bootc-testboot/hello/healthcheck.log /usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8080/health 10
 Restart=always
