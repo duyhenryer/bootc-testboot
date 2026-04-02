@@ -187,7 +187,7 @@ podman run --rm \
     systemd-tmpfiles --create      # create /var dirs from tmpfiles.d
     /usr/bin/hello &               # start the app
     sleep 1
-    curl -sf http://127.0.0.1:8080/health  # check it responds
+    curl -sf http://127.0.0.1:8000/health  # check it responds
   '
 ```
 
@@ -273,7 +273,7 @@ bootc status
 systemctl status hello nginx
 
 # Check app responds
-curl http://localhost:8080/health
+curl http://localhost:8000/health
 
 # Check immutable configs
 ls -la /etc/nginx/nginx.conf    # should be symlink -> /usr/share/nginx/nginx.conf
@@ -537,7 +537,7 @@ nginx: configuration file /etc/nginx/nginx.conf test is successful
 podman run --rm <image> firewall-offline-cmd --zone=public --list-ports
 ```
 
-- **Expected:** `22/tcp 80/tcp 443/tcp 8080/tcp`
+- **Expected:** `22/tcp 80/tcp 443/tcp 8000/tcp`
 
 ### TC-08h: Image Labels
 

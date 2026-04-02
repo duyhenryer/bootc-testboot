@@ -13,13 +13,13 @@ Environment=LOG_FILE=/var/log/bootc-testboot/hello/hello.log
 # Tier 1: immutable defaults (image-versioned)
 EnvironmentFile=/usr/share/bootc-testboot/hello/hello.env
 # Tier 2: shared infra secrets (declare only what this app uses)
-# EnvironmentFile=-/var/lib/bootc-testboot/shared/env/mongodb.env
-# EnvironmentFile=-/var/lib/bootc-testboot/shared/env/valkey.env
-# EnvironmentFile=-/var/lib/bootc-testboot/shared/env/rabbitmq.env
+EnvironmentFile=-/var/lib/bootc-testboot/shared/env/mongodb.env
+EnvironmentFile=-/var/lib/bootc-testboot/shared/env/valkey.env
+EnvironmentFile=-/var/lib/bootc-testboot/shared/env/rabbitmq.env
 # Tier 3: per-app secret overrides
 EnvironmentFile=-/var/lib/bootc-testboot/hello/hello.secrets.overrides
 ExecStart=/usr/bin/hello
-ExecStartPost=/usr/bin/env LOG_FILE=/var/log/bootc-testboot/hello/healthcheck.log /usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8080/health 10
+ExecStartPost=/usr/bin/env LOG_FILE=/var/log/bootc-testboot/hello/healthcheck.log /usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8000/health 10
 Restart=always
 RestartSec=5
 

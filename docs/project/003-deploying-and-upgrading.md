@@ -164,7 +164,7 @@ This project does not include Terraform. Launch manually:
 1. EC2 → Launch instance
 2. Select **My AMIs** → choose `bootc-testboot-dev`
 3. Instance type: t3.small or larger
-4. Configure security group (SSH 22, HTTP 80, 8080 for hello)
+4. Configure security group (SSH 22, HTTP 80, 8000 for hello)
 5. Attach IAM instance profile with **SSM** permissions (for Session Manager)
 
 **AWS CLI:**
@@ -197,9 +197,9 @@ sudo bootc status
 # Expected services (adjust names to match your image)
 systemctl is-active nginx hello.service sshd chronyd || true
 
-# HTTP (nginx → hello on 8080, if configured)
+# HTTP (nginx → hello on 8000, if configured)
 curl -sf -o /dev/null -w "%{http_code}\n" http://127.0.0.1/ || true
-curl -sf http://127.0.0.1:8080/health || true
+curl -sf http://127.0.0.1:8000/health || true
 
 # Immutable /usr
 touch /usr/bin/.test 2>&1 || echo "/usr is not writable (expected)"
@@ -797,7 +797,7 @@ aws ssm start-session --target i-XXXXX --region "$AWS_REGION"
 ssh -i ~/.ssh/YOUR_KEY.pem devops@EC2_PUBLIC_IP
 
 systemctl status hello nginx mongod valkey
-curl -sf http://127.0.0.1:8080/health
+curl -sf http://127.0.0.1:8000/health
 ```
 
 If the security group allows inbound HTTP (port 80), nginx reverse-proxies to the hello app:
@@ -944,7 +944,7 @@ gcloud compute instances create "vm-bootc-test" \
 gcloud compute ssh devops@vm-bootc-test \
     --project=skilled-box-481815-k8 \
     --zone=asia-southeast1-a \
-    --command="systemctl status hello nginx mongod valkey rabbitmq-server && curl -sf http://127.0.0.1:8080/health"
+    --command="systemctl status hello nginx mongod valkey rabbitmq-server && curl -sf http://127.0.0.1:8000/health"
 ```
 
 ### Bugs found and fixed
@@ -1216,7 +1216,7 @@ ovftool output/ova/bootc-testboot.ova ~/vmware/bootc-testboot/bootc-testboot.vmx
 ssh -i ~/.ssh/YOUR_KEY.pem devops@VM_IP_ADDRESS
 
 systemctl status hello nginx mongod valkey
-curl -sf http://127.0.0.1:8080/health
+curl -sf http://127.0.0.1:8000/health
 ```
 
 > **Tip:** If the VM has no IP, check that the network adapter is connected and the port group has DHCP. Use `govc vm.ip -wait 60s bootc-testboot` to wait for the IP.
