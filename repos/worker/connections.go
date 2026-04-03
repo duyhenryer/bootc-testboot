@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/url"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -19,9 +20,16 @@ type MongoDBManager struct {
 }
 
 func (m *MongoDBManager) Connect(ctx context.Context, uri string, dbName string) error {
-	slog.Debug("mongodb connecting", "uri", uri, "db", dbName)
+	// URL encode password in URI to handle special characters like '/'
+	encodedURI, err := encodeMongoDBPassword(uri)
+	if err != nil {
+		slog.Error("mongodb uri encoding failed", "err", err, "original_uri", uri)
+		return err
+	}
 
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+	slog.Debug("mongodb connecting", "uri", encodedURI, "db", dbName)
+
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(encodedURI))
 	if err != nil {
 		slog.Error("mongodb connect failed", "err", err)
 		return err
@@ -131,6 +139,38 @@ func (m *MongoDBManager) Count(ctx context.Context) (int64, error) {
 	}
 
 	return count, nil
+}
+
+// encodeMongoDBPassword parses MongoDB URI and URL-encodes the password to handle special characters
+func encodeMongoDBPassword(uri string) (string, error) {
+	// Parse the URI
+	u, err := url.Parse(uri)
+	if err != nil {
+		return "", err
+	}
+
+	// Check if URI has user info (username:password)
+	if u.User == nil {
+		return uri, nil // No password to encode
+	}
+
+	// Get username and password
+	username := u.User.Username()
+	password, ok := u.User.Password()
+	if !ok {
+		return uri, nil // No password
+	}
+
+	// URL encode the password
+	encodedPassword := url.QueryEscape(password)
+
+	// Rebuild user info with encoded password
+	userInfo := url.UserPassword(username, encodedPassword)
+
+	// Rebuild URI with encoded user info
+	u.User = userInfo
+
+	return u.String(), nil
 }
 
 // RabbitMQManager handles connections to RabbitMQ
