@@ -38,7 +38,8 @@ func main() {
 
 	// Connect to MongoDB
 	ctx := context.Background()
-	if err := mongoMgr.Connect(ctx, cfg.MongoDBURI, cfg.MongoDBName); err != nil {
+	mongoURI := cfg.buildMongoDBURI()
+	if err := mongoMgr.Connect(ctx, mongoURI, cfg.MongoDBName); err != nil {
 		slog.Error("failed to connect to mongodb", "err", err)
 	} else {
 		if err := mongoMgr.EnsureCollection(ctx, "users"); err != nil {
@@ -47,7 +48,8 @@ func main() {
 	}
 
 	// Connect to RabbitMQ
-	if err := amqpMgr.Connect(ctx, cfg.RabbitMQURI, cfg.RabbitMQQueue); err != nil {
+	rabbitURI := cfg.buildRabbitMQURI()
+	if err := amqpMgr.Connect(ctx, rabbitURI, cfg.RabbitMQQueue); err != nil {
 		slog.Error("failed to connect to rabbitmq", "err", err)
 	}
 
