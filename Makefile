@@ -138,7 +138,7 @@ test-integration: build ## Integration test: run app in read-only mode (simulate
 
 ALL_DISTROS = centos-stream9 centos-stream10 fedora-40 fedora-41
 
-audit: apps ## Build + strict-lint ALL base images and app image locally
+audit: apps validate-ports ## Build + strict-lint ALL base images and app image locally
 	@for d in $(ALL_DISTROS); do \
 		echo "==> [audit] base $$d"; \
 		$(MAKE) base BASE_DISTRO=$$d || exit 1; \
