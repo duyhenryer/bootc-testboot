@@ -190,7 +190,9 @@ git push origin main
 
 # Release: create a semver tag -> auto-build -> versioned tag
 git tag v1.0.0
-git push --tags
+git push origin v1.0.0 # pushes only v1.0.0
+
+git push --tags # pushes all tags
 ```
 
 **Traceability:** Every app image has OCI labels recording which base image version and git commit it was built from. Inspect with `podman inspect <image> | jq '.[0].Config.Labels'`.
@@ -215,37 +217,4 @@ All base images include production hardening:
 - `bootc upgrade` pulls new image, `bootc rollback` swaps back (~2 min)
 
 ## Documentation
-
-### Learn bootc (`docs/bootc/`)
-
-Read these first to understand how bootc works.
-
-| Doc | Topic |
-|-----|-------|
-| [001](docs/bootc/001-what-is-bootc.md) | What is bootc? |
-| [002](docs/bootc/002-architecture-and-ostree.md) | Architecture & OSTree |
-| [003](docs/bootc/003-filesystem-layout.md) | Filesystem Layout (MUST READ) |
-| [004](docs/bootc/004-users-groups-ssh.md) | Users, Groups & SSH |
-| [005](docs/bootc/005-secrets-management.md) | Secrets Management |
-| [006](docs/bootc/006-upgrade-and-rollback.md) | Upgrade & Rollback |
-| [007](docs/bootc/007-registries-and-offline.md) | Registries & Offline |
-| [008](docs/bootc/008-relationships.md) | Related Projects |
-| [009](docs/bootc/009-base-distro-comparison.md) | Base Distro Comparison |
-| [010](docs/bootc/010-ubuntu-bootc-status.md) | Ubuntu bootc Status |
-| [011](docs/bootc/011-bootc-vision.md) | bootc Vision |
-| [012](docs/bootc/012-bootc-limitations.md) | bootc + bootc-image-builder Limitations |
-| [013](docs/bootc/013-bootc-image-builder-guide.md) | bootc-image-builder for Newbies |
-| [014](docs/bootc/014-production-tuning-guide.md) | Production Tuning Guide (use cases, customizations, readiness checklist) |
-
-### Our Project (`docs/project/`)
-
-How we use bootc to build, test, and deliver our product.
-
-| Doc | Topic |
-|-----|-------|
-| [001](docs/project/001-architecture-overview.md) | Architecture Overview |
-| [002](docs/project/002-building-images.md) | Building Images (bootc patterns, rootfs overlay, immutable config strategy) |
-| [003](docs/project/003-deploying-and-upgrading.md) | Deploying and Upgrading (walkthrough, disk images, all targets, ops runbook) |
-| [004](docs/project/004-testing-guide.md) | Testing Guide (3-level testing, TC registry, troubleshooting) |
-| [005](docs/project/005-ghcr-audit-and-post-deploy.md) | GHCR Audit and Post-Deploy Verification |
-| [006](docs/project/006-selinux-reference.md) | SELinux Reference (MongoDB FTDC, case studies, build-time policy) |
+Learn bootc (`docs/`)
