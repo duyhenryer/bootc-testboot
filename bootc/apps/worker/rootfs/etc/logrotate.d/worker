@@ -1,0 +1,9 @@
+# worker.service: app logs (User=worker; fd kept open — use copytruncate)
+/var/log/bootc-testboot/worker/*.log {
+    weekly
+    rotate 4
+    copytruncate
+    missingok
+    notifempty
+    su worker worker
+}

@@ -1,0 +1,35 @@
+[Unit]
+Description=Worker Service - Data Seeding and Infrastructure Verification
+After=network-online.target testboot-app-setup.service
+Wants=network-online.target testboot-app-setup.service
+
+[Service]
+Type=simple
+User=worker
+Group=worker
+StateDirectory=bootc-testboot/worker
+LogsDirectory=bootc-testboot/worker
+Environment=LOG_FILE=/var/log/bootc-testboot/worker/worker.log
+
+# Tier 1: immutable defaults (image-versioned)
+EnvironmentFile=/usr/share/bootc-testboot/worker/worker.env
+
+# Tier 2: shared infra secrets (declare only what this app uses)
+EnvironmentFile=-/var/lib/bootc-testboot/shared/env/mongodb.env
+EnvironmentFile=-/var/lib/bootc-testboot/shared/env/rabbitmq.env
+EnvironmentFile=-/var/lib/bootc-testboot/shared/env/valkey.env
+
+# Tier 3: per-app secret overrides
+EnvironmentFile=-/var/lib/bootc-testboot/worker/worker.secrets.overrides
+
+ExecStart=/usr/bin/worker
+
+# Optional: run healthcheck script
+ExecStartPost=/usr/bin/env LOG_FILE=/var/log/bootc-testboot/worker/healthcheck.log \
+  /usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8001/health 10
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
