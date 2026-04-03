@@ -188,9 +188,15 @@ MONGODB_PASSWORD=your_password_here
 MONGODB_DB=testboot
 MONGODB_REPLICA_SET=rs0
 
+# RabbitMQ configuration (individual vars, URI built automatically)
+RABBITMQ_HOST=127.0.0.1
+RABBITMQ_PORT=5672
+RABBITMQ_USERNAME=guest
+RABBITMQ_PASSWORD=guest
+RABBITMQ_VHOST=/
+RABBITMQ_QUEUE=worker_queue
+
 # Other infrastructure
-RABBITMQ_URI=amqp://guest:guest@localhost:5672/
-RABBITMQ_QUEUE=testboot
 VALKEY_ADDR=localhost:6379
 VALKEY_DB=0
 ```
@@ -199,8 +205,8 @@ VALKEY_DB=0
 
 Located at `/var/lib/bootc-testboot/shared/env/`:
 
-- `mongodb.env`: MongoDB connection credentials
-- `rabbitmq.env`: RabbitMQ connection credentials
+- `mongodb.env`: Individual MongoDB connection variables (HOST, PORT, USERNAME, PASSWORD, DB, REPLICA_SET)
+- `rabbitmq.env`: Individual RabbitMQ connection variables (HOST, PORT, USERNAME, PASSWORD, VHOST)
 - `valkey.env`: Valkey connection credentials
 
 ### Tier 3: Per-App Secret Overrides
@@ -378,9 +384,16 @@ Test manual connection: mongosh --host $MONGODB_HOST --port $MONGODB_PORT --user
 **"connection refused" or authentication errors:**
 ```
 Check RabbitMQ service: systemctl status rabbitmq-server
-Verify credentials in /var/lib/bootc-testboot/shared/env/rabbitmq.env
+Verify individual env vars in /var/lib/bootc-testboot/shared/env/rabbitmq.env:
+- RABBITMQ_HOST
+- RABBITMQ_PORT
+- RABBITMQ_USERNAME
+- RABBITMQ_PASSWORD
+- RABBITMQ_VHOST
 Test manual connection: rabbitmqctl status
 ```
+
+**Note:** The app automatically builds the RabbitMQ AMQP URI from individual environment variables and URL-encodes credentials to handle special characters.
 
 #### Valkey Connection Issues
 

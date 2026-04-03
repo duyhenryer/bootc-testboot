@@ -21,7 +21,11 @@ type Config struct {
 	MongoDBPassword  string
 	MongoDBName      string
 	MongoDBReplicaSet string
-	RabbitMQURI      string
+	RabbitMQHost     string
+	RabbitMQPort     int
+	RabbitMQUsername string
+	RabbitMQPassword string
+	RabbitMQVHost    string
 	RabbitMQQueue    string
 	ValkeyAddr       string
 	ValkeyDB         int
@@ -41,7 +45,11 @@ func loadConfig() (*Config, error) {
 		MongoDBPassword:  getEnv("MONGODB_PASSWORD", ""),
 		MongoDBName:      getEnv("MONGODB_DB", "testboot_db"),
 		MongoDBReplicaSet: getEnv("MONGODB_REPLICA_SET", ""),
-		RabbitMQURI:      getEnv("RABBITMQ_URI", "amqp://guest:guest@localhost:5672/"),
+		RabbitMQHost:      getEnv("RABBITMQ_HOST", "localhost"),
+		RabbitMQPort:      getEnvInt("RABBITMQ_PORT", 5672),
+		RabbitMQUsername:  getEnv("RABBITMQ_USERNAME", "guest"),
+		RabbitMQPassword:  getEnv("RABBITMQ_PASSWORD", "guest"),
+		RabbitMQVHost:     getEnv("RABBITMQ_VHOST", "/"),
 		RabbitMQQueue:    getEnv("RABBITMQ_QUEUE", "worker_queue"),
 		ValkeyAddr:       getEnv("VALKEY_ADDR", "localhost:6379"),
 		ValkeyDB:         getEnvInt("VALKEY_DB", 0),
@@ -51,8 +59,8 @@ func loadConfig() (*Config, error) {
 	if cfg.MongoDBHost == "" {
 		return nil, fmt.Errorf("MONGODB_HOST is required")
 	}
-	if cfg.RabbitMQURI == "" {
-		return nil, fmt.Errorf("RABBITMQ_URI is required")
+	if cfg.RabbitMQHost == "" {
+		return nil, fmt.Errorf("RABBITMQ_HOST is required")
 	}
 	if cfg.ValkeyAddr == "" {
 		return nil, fmt.Errorf("VALKEY_ADDR is required")
@@ -98,6 +106,23 @@ func (c *Config) buildMongoDBURI() string {
 	if c.MongoDBReplicaSet != "" {
 		uri += fmt.Sprintf("/?replicaSet=%s", c.MongoDBReplicaSet)
 	}
+
+	return uri
+}
+
+// buildRabbitMQURI constructs a properly formatted RabbitMQ AMQP URI
+func (c *Config) buildRabbitMQURI() string {
+	// URL encode credentials to handle special characters
+	encodedUsername := url.QueryEscape(c.RabbitMQUsername)
+	encodedPassword := url.QueryEscape(c.RabbitMQPassword)
+
+	// Build URI: amqp://user:pass@host:port/vhost
+	uri := fmt.Sprintf("amqp://%s:%s@%s:%d%s",
+		encodedUsername,
+		encodedPassword,
+		c.RabbitMQHost,
+		c.RabbitMQPort,
+		c.RabbitMQVHost)
 
 	return uri
 }
