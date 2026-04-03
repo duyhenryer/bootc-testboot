@@ -38,7 +38,8 @@ func main() {
 
 	// Connect to MongoDB
 	ctx := context.Background()
-	if err := mongoMgr.Connect(ctx, cfg.MongoDBURI, cfg.MongoDBName); err != nil {
+	mongoURI := cfg.buildMongoDBURI()
+	if err := mongoMgr.Connect(ctx, mongoURI, cfg.MongoDBName); err != nil {
 		slog.Error("failed to connect to mongodb", "err", err)
 	} else {
 		if err := mongoMgr.EnsureCollection(ctx, "users"); err != nil {

@@ -180,9 +180,15 @@ Located at `/usr/share/bootc-testboot/worker/worker.env`:
 LISTEN_ADDR=127.0.0.1:8001
 LOG_LEVEL=INFO
 
-# Infrastructure URIs (defaults for development)
-MONGODB_URI=mongodb://localhost:27017
-MONGODB_NAME=testboot
+# MongoDB configuration (individual vars, URI built automatically)
+MONGODB_HOST=127.0.0.1
+MONGODB_PORT=27017
+MONGODB_USERNAME=admin
+MONGODB_PASSWORD=your_password_here
+MONGODB_DB=testboot
+MONGODB_REPLICA_SET=rs0
+
+# Other infrastructure
 RABBITMQ_URI=amqp://guest:guest@localhost:5672/
 RABBITMQ_QUEUE=testboot
 VALKEY_ADDR=localhost:6379
@@ -354,23 +360,18 @@ make test-smoke EXPECTED_BINS="hello worker" EXPECTED_SVCS="hello worker nginx"
 
 #### MongoDB Connection Issues
 
-**"unescaped slash in password" error:**
+**"connection refused" or authentication errors:**
 ```
-time=2026-04-03T11:25:45.925Z level=ERROR msg="mongodb connect failed" err="error parsing uri: unescaped slash in password"
+Check MongoDB service status: systemctl status mongod
+Verify individual env vars in /var/lib/bootc-testboot/shared/env/mongodb.env:
+- MONGODB_HOST
+- MONGODB_PORT
+- MONGODB_USERNAME
+- MONGODB_PASSWORD
+Test manual connection: mongosh --host $MONGODB_HOST --port $MONGODB_PORT --username $MONGODB_USERNAME --password $MONGODB_PASSWORD
 ```
 
-**Root cause:** Password contains special characters (like `/`) that aren't URL-encoded in the MongoDB URI.
-
-**Solution:** The worker app automatically URL-encodes passwords in MongoDB URIs. If you still see this error:
-- Check `/var/lib/bootc-testboot/shared/env/mongodb.env` for the `MONGODB_URI`
-- Ensure the URI is properly formatted: `mongodb://user:pass@host:port/db`
-- The app handles URL encoding automatically - no manual intervention needed
-
-**Manual verification:**
-```bash
-# Test URI parsing (should not show the error)
-curl http://127.0.0.1:8001/status/mongodb
-```
+**Note:** The app automatically builds the MongoDB URI from individual environment variables and URL-encodes the password to handle special characters. No manual URI construction is needed.
 
 #### RabbitMQ Connection Issues
 
