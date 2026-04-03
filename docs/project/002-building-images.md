@@ -588,7 +588,7 @@ Each app user joins the group via `m <app> apps` in its sysusers.d config. The g
 g apps -                    # shared group (sysusers.d/apps.conf)
 m hello apps                # hello joins the group
 m api apps                  # future: api joins too
-m worker apps               # future: worker joins too
+m worker apps               # worker app implemented
 
 root:apps 0640              # env files: root writes, apps group reads
 ```
@@ -615,7 +615,7 @@ Web-facing apps behind nginx use ports in the range **8000-8099**. Each app gets
 |-----|------|--------|
 | hello | 8000 | Active |
 | api | 8001 | Future |
-| worker | — | No HTTP (background processing) |
+| worker | 8001 | Active (health checks, data seeding) |
 | scheduler | — | No HTTP (cron-like) |
 
 Not all apps need a port — only those serving HTTP behind nginx.
