@@ -352,25 +352,38 @@ make test-smoke EXPECTED_BINS="hello worker" EXPECTED_SVCS="hello worker nginx"
 
 ## Troubleshooting
 
-### Common Issues
+#### MongoDB Connection Issues
 
-#### Connection Failures
-
-**MongoDB Connection Error:**
+**"unescaped slash in password" error:**
 ```
-Check MongoDB service status: systemctl status mongod
-Verify connection string in /var/lib/bootc-testboot/shared/env/mongodb.env
-Test manual connection: mongosh mongodb://localhost:27017/testboot
+time=2026-04-03T11:25:45.925Z level=ERROR msg="mongodb connect failed" err="error parsing uri: unescaped slash in password"
 ```
 
-**RabbitMQ Connection Error:**
+**Root cause:** Password contains special characters (like `/`) that aren't URL-encoded in the MongoDB URI.
+
+**Solution:** The worker app automatically URL-encodes passwords in MongoDB URIs. If you still see this error:
+- Check `/var/lib/bootc-testboot/shared/env/mongodb.env` for the `MONGODB_URI`
+- Ensure the URI is properly formatted: `mongodb://user:pass@host:port/db`
+- The app handles URL encoding automatically - no manual intervention needed
+
+**Manual verification:**
+```bash
+# Test URI parsing (should not show the error)
+curl http://127.0.0.1:8001/status/mongodb
+```
+
+#### RabbitMQ Connection Issues
+
+**"connection refused" or authentication errors:**
 ```
 Check RabbitMQ service: systemctl status rabbitmq-server
 Verify credentials in /var/lib/bootc-testboot/shared/env/rabbitmq.env
 Test manual connection: rabbitmqctl status
 ```
 
-**Valkey Connection Error:**
+#### Valkey Connection Issues
+
+**"connection refused" error:**
 ```
 Check Valkey service: systemctl status valkey
 Verify connection in /var/lib/bootc-testboot/shared/env/valkey.env
