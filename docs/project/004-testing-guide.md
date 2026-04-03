@@ -313,8 +313,8 @@ The smoke test checks are configured via Makefile variables:
 # Default (just hello app)
 make test-smoke
 
-# When you add more apps, override the variables:
-make test-smoke EXPECTED_BINS="hello app-api app-worker" EXPECTED_SVCS="hello app-api app-worker nginx"
+# With worker app added:
+make test-smoke EXPECTED_BINS="hello worker" EXPECTED_SVCS="hello worker nginx"
 ```
 
 ---
