@@ -1,0 +1,12 @@
+[Unit]
+Description=Timer for hello periodic healthcheck
+Documentation=file:/usr/lib/systemd/system/hello-healthcheck.service
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=1min
+AccuracySec=5s
+RandomizedDelaySec=15
+
+[Install]
+WantedBy=timers.target

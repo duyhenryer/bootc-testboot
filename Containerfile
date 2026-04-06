@@ -106,6 +106,9 @@ RUN for svc in /usr/lib/systemd/system/*.service; do \
       fi; \
     done
 
+# --- Periodic HTTP healthchecks (hello + worker: timer units are not *.service) ---
+RUN systemctl enable hello-healthcheck.timer worker-healthcheck.timer 2>/dev/null || true
+
 # Cloud / generic hosts: do not keep arptables or rdisc enabled (often fail or are unused on VPC VMs).
 RUN systemctl disable arptables.service rdisc.service 2>/dev/null || true && \
     rm -f /etc/systemd/system/multi-user.target.wants/arptables.service \

@@ -1,0 +1,12 @@
+[Unit]
+Description=Timer for worker periodic healthcheck
+Documentation=file:/usr/lib/systemd/system/worker-healthcheck.service
+
+[Timer]
+OnBootSec=50s
+OnUnitActiveSec=1min
+AccuracySec=5s
+RandomizedDelaySec=15
+
+[Install]
+WantedBy=timers.target
