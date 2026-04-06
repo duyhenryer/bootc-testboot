@@ -12,6 +12,8 @@ Use this map to pick the right doc and avoid duplicating content across files. *
 | Local testing, test case registry (TC-xx), QEMU, troubleshooting | [004-testing-guide.md](004-testing-guide.md) |
 | Verify GHCR after CI, post-deploy VM audit checklist | [005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md) |
 | SELinux: MongoDB FTDC denials, build-time policy, case studies | [006-selinux-reference.md](006-selinux-reference.md) |
+| SELinux: MongoDB-specific policy notes (supplement to 006) | [007-selinux-mongodb.md](007-selinux-mongodb.md) |
+| Hello/Worker `ExecStartPost` healthcheck, logs, `systemd.timer` options | [008-healthcheck.md](008-healthcheck.md) |
 
 ## Canonical topic -> doc
 
@@ -27,7 +29,9 @@ Use this map to pick the right doc and avoid duplicating content across files. *
 | **GHCR paths, `verify-ghcr`** | [005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md) | 003 keeps the artifact path table for deployers. |
 | **Post-deploy checks / troubleshooting** | [005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md) + [004-testing-guide.md](004-testing-guide.md) | 005 has the VM checklist; 004 has test-level troubleshooting. |
 | **SELinux policy** | [006-selinux-reference.md](006-selinux-reference.md) | Problem history, methods, case studies, AVC reading guide. |
+| **SELinux / MongoDB** (image-specific) | [007-selinux-mongodb.md](007-selinux-mongodb.md) | Complements 006 for MongoDB in this image. |
+| **Hello/Worker healthcheck** (`ExecStartPost`, periodic options) | [008-healthcheck.md](008-healthcheck.md) | Smoke vs timer; empty logs after rotate; matrix; identity. |
 
 ## Numbering
 
-Files use `00N-` prefixes for sort order (currently **001**-**006** in this folder). There is no required reading sequence; [001](001-architecture-overview.md) is the usual starting point.
+Files use `00N-` prefixes for sort order (this folder includes **[001](001-architecture-overview.md)** through **[008](008-healthcheck.md)** contiguously). There is no required reading sequence; [001](001-architecture-overview.md) is the usual starting point.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verify published GHCR images (public registry — no login).
 #   1) skopeo inspect — metadata only, no full layer download
-#   2) podman pull + check paths in scratch artifacts (see docs/project/004-manual-build-and-deployment.md)
+#   2) podman pull + check paths in scratch artifacts (see docs/project/004-testing-guide.md and 002-building-images.md)
 #
 # Needs: skopeo, podman, jq. Lots of free disk for full pulls.
 #
