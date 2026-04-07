@@ -172,5 +172,5 @@ jobs:
       - name: Trivy CVE scan (informational)
         run: |
           podman save ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:pr-check -o /tmp/bootc-app.tar
-          podman run --rm -v /tmp/bootc-app.tar:/scan.tar:ro docker.io/aquasec/trivy:latest \
+          podman run --rm -v /tmp/bootc-app.tar:/scan.tar:ro docker.io/aquasec/trivy:0.69.3 \
             image --input /scan.tar --scanners vuln --severity HIGH,CRITICAL --exit-code 0
