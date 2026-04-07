@@ -220,6 +220,3 @@ All base images include production hardening:
 - `/etc` is **mutable** with 3-way merge on upgrade
 - `/var` is **persistent** — app data survives OS rollback
 - `bootc upgrade` pulls new image, `bootc rollback` swaps back (~2 min)
-
-## Documentation
-Learn bootc (`docs/`)
