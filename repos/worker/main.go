@@ -38,7 +38,7 @@ func main() {
 
 	ctx := context.Background()
 	mongoURI := cfg.buildMongoDBURI()
-	if err := mongoMgr.Connect(ctx, mongoURI, cfg.MongoDBName); err != nil {
+	if err := mongoMgr.Connect(ctx, mongoURI, cfg.MongoDBName, cfg.MongoDBMaxPoolSize); err != nil {
 		slog.Error("failed to connect to mongodb", "err", err)
 	} else {
 		for _, coll := range DefaultSeedCollections {
