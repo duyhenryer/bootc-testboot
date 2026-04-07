@@ -1,0 +1,12 @@
+# Application and ops logs under /var/log/bootc-testboot (see docs/project/009-observability-logs.md).
+/var/log/bootc-testboot/*/*.log
+/var/log/bootc-testboot/*.log
+{
+    weekly
+    rotate 4
+    missingok
+    notifempty
+    copytruncate
+    compress
+    delaycompress
+}

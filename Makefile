@@ -1,4 +1,5 @@
-.PHONY: base apps build test lint lint-strict test-smoke test-integration audit verify-ghcr validate-ports help clean
+.PHONY: base apps build test lint test-smoke test-smoke-run test-integration \
+       audit audit-all manifest scan-image verify-ghcr help clean
 
 # ---------------------------------------------------------------------------
 # Variables (override via env or command line)
@@ -22,6 +23,8 @@ BASE_MAP_centos-stream10 = base/centos/stream10/Containerfile
 BASE_MAP_fedora-40       = base/fedora/40/Containerfile
 BASE_MAP_fedora-41       = base/fedora/41/Containerfile
 BASE_FILE = $(BASE_MAP_$(BASE_DISTRO))
+
+ALL_DISTROS = centos-stream9 centos-stream10 fedora-40 fedora-41
 
 # ---------------------------------------------------------------------------
 # Base Image (Layer 1: OS + tuning, build weekly)
@@ -72,95 +75,55 @@ build: apps ## Build application image (uses base, BASE_DISTRO=centos-stream9|..
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		-t $(APP_IMAGE_REF):$(VERSION) .
 
-lint: ## Run bootc container lint on the built image
-	$(PODMAN) run --rm $(APP_IMAGE_REF):latest bootc container lint
-
-lint-strict: ## Run bootc container lint --fatal-warnings (used in CI)
-	$(PODMAN) run --rm $(APP_IMAGE_REF):latest bootc container lint --fatal-warnings || exit 1
+lint: ## Run bootc container lint --fatal-warnings
+	$(PODMAN) run --rm $(APP_IMAGE_REF):$(VERSION) bootc container lint --fatal-warnings
 
 # ---------------------------------------------------------------------------
 # Local Testing (no cloud deploy needed)
 # ---------------------------------------------------------------------------
 
-EXPECTED_BINS ?= hello
-EXPECTED_SVCS ?= hello nginx
+test-smoke: build test-smoke-run ## Smoke test: build + verify image contents
 
-test-smoke: build ## Smoke test: verify image contents (binaries, units, configs, lint)
-	@echo "==> Smoke testing $(APP_IMAGE_REF):latest"
-	@$(PODMAN) run --rm $(APP_IMAGE_REF):latest bash -c '\
-		FAIL=0; \
-		echo "--- Checking binaries ---"; \
-		for bin in $(EXPECTED_BINS); do \
-			if test -x /usr/bin/$$bin; then echo "  OK: /usr/bin/$$bin"; \
-			else echo "  FAIL: /usr/bin/$$bin missing"; FAIL=1; fi; \
-		done; \
-		echo "--- Checking systemd units ---"; \
-		for svc in $(EXPECTED_SVCS); do \
-			if systemctl is-enabled $$svc >/dev/null 2>&1; then echo "  OK: $$svc enabled"; \
-			else echo "  FAIL: $$svc not enabled"; FAIL=1; fi; \
-		done; \
-		echo "--- Checking immutable configs ---"; \
-		for f in /usr/share/nginx/nginx.conf /usr/share/nginx/conf.d/hello.conf; do \
-			if test -f $$f; then echo "  OK: $$f"; \
-			else echo "  FAIL: $$f missing"; FAIL=1; fi; \
-		done; \
-		echo "--- Running bootc lint ---"; \
-		bootc container lint || FAIL=1; \
-		echo "---"; \
-		if [ $$FAIL -eq 0 ]; then echo "ALL SMOKE TESTS PASSED"; \
-		else echo "SMOKE TESTS FAILED"; exit 1; fi'
+test-smoke-run: ## Smoke test only: expects image already built (CI uses this)
+	@./scripts/smoke-test.sh "$(PODMAN)" "$(APP_IMAGE_REF):$(VERSION)"
 
 test-integration: build ## Integration test: run app in read-only mode (simulates production)
-	@echo "==> Integration testing $(APP_IMAGE_REF):latest (read-only /usr)"
-	@$(PODMAN) run --rm \
-		--read-only \
-		--tmpfs /var:rw,nosuid,nodev \
-		--tmpfs /run:rw,nosuid,nodev \
-		--tmpfs /tmp:rw,nosuid,nodev \
-		$(APP_IMAGE_REF):latest bash -c '\
-		echo "--- Verifying tmpfiles.d creates /var dirs ---"; \
-		systemd-tmpfiles --create 2>/dev/null; \
-		for d in /var/log/nginx /var/lib/testboot; do \
-			if test -d $$d; then echo "  OK: $$d"; \
-			else echo "  FAIL: $$d not created"; exit 1; fi; \
-		done; \
-		echo "--- Starting hello service directly ---"; \
-		/usr/bin/hello & PID=$$!; sleep 1; \
-		RESP=$$(curl -sf http://127.0.0.1:8000/health 2>/dev/null); \
-		kill $$PID 2>/dev/null; \
-		if echo "$$RESP" | grep -q "ok"; then echo "  OK: hello /health responded"; \
-		else echo "  FAIL: hello /health did not respond"; exit 1; fi; \
-		echo "ALL INTEGRATION TESTS PASSED"'
+	@./scripts/integration-test.sh "$(PODMAN)" "$(APP_IMAGE_REF):$(VERSION)"
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Audit & Validation
 # ---------------------------------------------------------------------------
 
-ALL_DISTROS = centos-stream9 centos-stream10 fedora-40 fedora-41
+audit: manifest scan-image ## Local gate: manifest + Trivy (no build)
+	@echo "=== audit completed (see output/ for manifest). Also: make build && make test-smoke; make test ==="
 
-audit: apps validate-ports ## Build + strict-lint ALL base images and app image locally
+audit-all: apps ## Build + strict-lint ALL base images and app image
 	@for d in $(ALL_DISTROS); do \
-		echo "==> [audit] base $$d"; \
+		echo "==> [audit-all] base $$d"; \
 		$(MAKE) base BASE_DISTRO=$$d || exit 1; \
 		$(PODMAN) run --rm $(IMAGE_ROOT)/base/$$d:latest \
 			bootc container lint --fatal-warnings || exit 1; \
 	done
-	@echo "==> [audit] app $(BASE_DISTRO)"
+	@echo "==> [audit-all] app $(BASE_DISTRO)"
 	@$(MAKE) build
-	@$(PODMAN) run --rm $(APP_IMAGE_REF):latest \
+	@$(PODMAN) run --rm $(APP_IMAGE_REF):$(VERSION) \
 		bootc container lint --fatal-warnings
 	@echo "=== ALL AUDIT CHECKS PASSED ==="
 
-validate-ports: ## Validate app port assignments (range, uniqueness, env ↔ nginx)
-	@./bootc/libs/common/rootfs/usr/libexec/testboot/validate-ports.sh
+manifest: ## Write podman inspect JSON for $(APP_IMAGE_REF):$(VERSION) to output/
+	@mkdir -p output
+	@./scripts/image-manifest.sh "$(APP_IMAGE_REF):$(VERSION)"
 
-verify-ghcr: ## Pull + verify all GHCR packages (scripts/verify-ghcr-packages.sh; needs disk space)
+scan-image: ## Trivy CVE scan (optional; skips if trivy not installed)
+	@./scripts/scan-image-trivy.sh "$(APP_IMAGE_REF):$(VERSION)"
+
+verify-ghcr: ## Pull + verify all GHCR packages (needs disk space)
 	@./scripts/verify-ghcr-packages.sh
 
 clean: ## Clean build artifacts
 	rm -rf output/
-	$(PODMAN) rmi -f $(APP_IMAGE_REF):latest 2>/dev/null || true
+	$(PODMAN) rmi -f $(APP_IMAGE_REF):$(VERSION) 2>/dev/null || true
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'

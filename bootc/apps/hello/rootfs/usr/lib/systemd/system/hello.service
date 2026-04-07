@@ -1,12 +1,15 @@
 [Unit]
 Description=Hello World HTTP Service
-After=network-online.target testboot-app-setup.service
-Wants=network-online.target testboot-app-setup.service
+After=network-online.target testboot-app-setup.service testboot-infra.target
+Wants=network-online.target testboot-app-setup.service testboot-infra.target
+PartOf=testboot-apps.target
 
 [Service]
 Type=simple
 User=hello
 Group=hello
+NoNewPrivileges=yes
+PrivateTmp=yes
 StateDirectory=bootc-testboot/hello
 LogsDirectory=bootc-testboot/hello
 Environment=LOG_FILE=/var/log/bootc-testboot/hello/hello.log
@@ -24,4 +27,4 @@ Restart=always
 RestartSec=5
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=testboot-apps.target

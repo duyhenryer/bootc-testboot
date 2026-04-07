@@ -155,8 +155,22 @@ jobs:
             -t ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:pr-check \
             -f Containerfile .
 
+      - name: Bootc version
+        run: |
+          echo "=== bootc RPM / CLI — ${{ matrix.distro }} (app image :pr-check) ==="
+          podman run --rm ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:pr-check \
+            bash -c 'rpm -q bootc 2>/dev/null || true; bootc --version 2>/dev/null || true'
+
       - name: Lint app image
         run: podman run --rm ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:pr-check bootc container lint --fatal-warnings || exit 1
 
       - name: Smoke test
-        run: make test-smoke IMAGE=${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:pr-check 2>/dev/null || make test-smoke 2>/dev/null || echo "::warning::Smoke test target not configured for CI — skipping"
+        run: |
+          podman tag ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:pr-check ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:latest
+          make test-smoke-run APP_IMAGE_REF=${{ env.IMAGE_ROOT }}/${{ matrix.distro }} VERSION=latest
+
+      - name: Trivy CVE scan (informational)
+        run: |
+          podman save ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:pr-check -o /tmp/bootc-app.tar
+          podman run --rm -v /tmp/bootc-app.tar:/scan.tar:ro docker.io/aquasec/trivy:0.69.3 \
+            image --input /scan.tar --scanners vuln --severity HIGH,CRITICAL --exit-code 0

@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic HTTP healthcheck for hello (oneshot)
+Documentation=file:/usr/lib/systemd/system/hello.service
+After=network-online.target hello.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=hello
+Group=hello
+ExecStart=/usr/bin/env LOG_FILE=/var/log/bootc-testboot/hello/healthcheck-periodic.log /usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8000/health 10

@@ -2,71 +2,69 @@ package main
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
 )
 
 type Config struct {
-	ListenAddr       string
-	LogLevel         string
-	LogFormat        string
-	LogFile          string
-	WorkerMode       string
-	MockDataCount    int
-	MongoDBHost      string
-	MongoDBPort      int
-	MongoDBUsername  string
-	MongoDBPassword  string
-	MongoDBName      string
-	MongoDBReplicaSet string
-	RabbitMQHost     string
-	RabbitMQPort     int
-	RabbitMQUsername string
-	RabbitMQPassword string
-	RabbitMQVHost    string
-	RabbitMQQueue    string
-	ValkeyAddr       string
-	ValkeyDB         int
+	ListenAddr         string
+	LogLevel           string
+	LogFormat          string
+	LogFile            string
+	WorkerMode         string
+	MockDataCount      int
+	MongoDBURI         string
+	MongoDBName        string
+	MongoDBMaxPoolSize uint64
+	RabbitMQURI        string
+	RabbitMQQueue      string
+	ValkeyAddr         string
+	ValkeyDB           int
+	SeedHTTPTimeoutSec int
+	SeedBatchSize      int
+	SeedTargetSizeMB   int
 }
 
 func loadConfig() (*Config, error) {
 	cfg := &Config{
-		ListenAddr:       getEnv("LISTEN_ADDR", ":8001"),
-		LogLevel:         getEnv("LOG_LEVEL", "info"),
-		LogFormat:        getEnv("LOG_FORMAT", "text"),
-		LogFile:          getEnv("LOG_FILE", ""),
-		WorkerMode:       getEnv("WORKER_MODE", "seed"),
-		MockDataCount:    getEnvInt("MOCK_DATA_COUNT", 100),
-		MongoDBHost:      getEnv("MONGODB_HOST", "localhost"),
-		MongoDBPort:      getEnvInt("MONGODB_PORT", 27017),
-		MongoDBUsername:  getEnv("MONGODB_USERNAME", ""),
-		MongoDBPassword:  getEnv("MONGODB_PASSWORD", ""),
-		MongoDBName:      getEnv("MONGODB_DB", "testboot_db"),
-		MongoDBReplicaSet: getEnv("MONGODB_REPLICA_SET", ""),
-		RabbitMQHost:      getEnv("RABBITMQ_HOST", "localhost"),
-		RabbitMQPort:      getEnvInt("RABBITMQ_PORT", 5672),
-		RabbitMQUsername:  getEnv("RABBITMQ_USERNAME", "guest"),
-		RabbitMQPassword:  getEnv("RABBITMQ_PASSWORD", "guest"),
-		RabbitMQVHost:     getEnv("RABBITMQ_VHOST", "/"),
-		RabbitMQQueue:    getEnv("RABBITMQ_QUEUE", "worker_queue"),
-		ValkeyAddr:       getEnv("VALKEY_ADDR", "localhost:6379"),
-		ValkeyDB:         getEnvInt("VALKEY_DB", 0),
+		ListenAddr:         getEnv("LISTEN_ADDR", ":8001"),
+		LogLevel:           getEnv("LOG_LEVEL", "info"),
+		LogFormat:          getEnv("LOG_FORMAT", "text"),
+		LogFile:            getEnv("LOG_FILE", ""),
+		WorkerMode:         getEnv("WORKER_MODE", "seed"),
+		MockDataCount:      getEnvInt("MOCK_DATA_COUNT", 100),
+		MongoDBURI:         getEnv("MONGODB_URI", "mongodb://localhost:27017"),
+		MongoDBName:        getEnv("MONGODB_DB", "testboot_db"),
+		MongoDBMaxPoolSize: getEnvUint64("MONGODB_MAX_POOL_SIZE", 100),
+		RabbitMQURI:        getEnv("RABBITMQ_URI", "amqp://guest:guest@localhost:5672/"),
+		RabbitMQQueue:      getEnv("RABBITMQ_QUEUE", "worker_queue"),
+		ValkeyAddr:         getEnv("VALKEY_ADDR", "localhost:6379"),
+		ValkeyDB:           getEnvInt("VALKEY_DB", 0),
+		SeedHTTPTimeoutSec: getEnvInt("SEED_HTTP_TIMEOUT_SEC", 1800),
+		SeedBatchSize:      getEnvInt("SEED_BATCH_SIZE", 1000),
+		SeedTargetSizeMB:   getEnvInt("SEED_TARGET_SIZE_MB", 0),
 	}
 
-	// Validate required config
-	if cfg.MongoDBHost == "" {
-		return nil, fmt.Errorf("MONGODB_HOST is required")
+	if strings.TrimSpace(cfg.MongoDBURI) == "" {
+		return nil, fmt.Errorf("MONGODB_URI is required")
 	}
-	if cfg.RabbitMQHost == "" {
-		return nil, fmt.Errorf("RABBITMQ_HOST is required")
+	if strings.TrimSpace(cfg.RabbitMQURI) == "" {
+		return nil, fmt.Errorf("RABBITMQ_URI is required")
 	}
-	if cfg.ValkeyAddr == "" {
+	if strings.TrimSpace(cfg.ValkeyAddr) == "" {
 		return nil, fmt.Errorf("VALKEY_ADDR is required")
 	}
 
 	return cfg, nil
+}
+
+func (cfg *Config) buildMongoDBURI() string {
+	return cfg.MongoDBURI
+}
+
+func (cfg *Config) buildRabbitMQURI() string {
+	return cfg.RabbitMQURI
 }
 
 func getEnv(key, defaultValue string) string {
@@ -89,40 +87,14 @@ func getEnvInt(key string, defaultValue int) int {
 	return intVal
 }
 
-// buildMongoDBURI constructs a properly formatted MongoDB URI with URL-encoded password
-func (c *Config) buildMongoDBURI() string {
-	hostPort := fmt.Sprintf("%s:%d", c.MongoDBHost, c.MongoDBPort)
-
-	var uri string
-	if c.MongoDBUsername != "" && c.MongoDBPassword != "" {
-		// URL encode the password to handle special characters
-		encodedPassword := url.QueryEscape(c.MongoDBPassword)
-		uri = fmt.Sprintf("mongodb://%s:%s@%s", c.MongoDBUsername, encodedPassword, hostPort)
-	} else {
-		uri = fmt.Sprintf("mongodb://%s", hostPort)
+func getEnvUint64(key string, defaultValue uint64) uint64 {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
 	}
-
-	// Add replica set if specified
-	if c.MongoDBReplicaSet != "" {
-		uri += fmt.Sprintf("/?replicaSet=%s", c.MongoDBReplicaSet)
+	u, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
+	if err != nil {
+		return defaultValue
 	}
-
-	return uri
-}
-
-// buildRabbitMQURI constructs a properly formatted RabbitMQ AMQP URI
-func (c *Config) buildRabbitMQURI() string {
-	// URL encode credentials to handle special characters
-	encodedUsername := url.QueryEscape(c.RabbitMQUsername)
-	encodedPassword := url.QueryEscape(c.RabbitMQPassword)
-
-	// Build URI: amqp://user:pass@host:port/vhost
-	uri := fmt.Sprintf("amqp://%s:%s@%s:%d%s",
-		encodedUsername,
-		encodedPassword,
-		c.RabbitMQHost,
-		c.RabbitMQPort,
-		c.RabbitMQVHost)
-
-	return uri
+	return u
 }

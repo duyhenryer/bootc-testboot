@@ -1,12 +1,13 @@
 package main
 
 import (
-	"testing"
+	"encoding/hex"
 	"strings"
+	"testing"
 )
 
 func TestGenerateMockUser(t *testing.T) {
-	user := GenerateMockUser()
+	user := GenerateMockUser(nil)
 
 	if user.Name == "" {
 		t.Fatal("Name should not be empty")
@@ -23,8 +24,11 @@ func TestGenerateMockUser(t *testing.T) {
 	if user.UserID == "" {
 		t.Fatal("UserID should not be empty")
 	}
-	if !strings.HasPrefix(user.UserID, "USR-") {
-		t.Fatalf("UserID should start with USR-, got %s", user.UserID)
+	if len(user.UserID) != 24 {
+		t.Fatalf("UserID should be 24-char ObjectID hex, got %q len %d", user.UserID, len(user.UserID))
+	}
+	if _, err := hex.DecodeString(user.UserID); err != nil {
+		t.Fatalf("UserID should be hex: %v", err)
 	}
 }
 

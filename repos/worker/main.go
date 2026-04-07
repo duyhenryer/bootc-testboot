@@ -36,14 +36,15 @@ func main() {
 	amqpMgr := &RabbitMQManager{}
 	valkeyMgr := &ValkeyManager{}
 
-	// Connect to MongoDB
 	ctx := context.Background()
 	mongoURI := cfg.buildMongoDBURI()
-	if err := mongoMgr.Connect(ctx, mongoURI, cfg.MongoDBName); err != nil {
+	if err := mongoMgr.Connect(ctx, mongoURI, cfg.MongoDBName, cfg.MongoDBMaxPoolSize); err != nil {
 		slog.Error("failed to connect to mongodb", "err", err)
 	} else {
-		if err := mongoMgr.EnsureCollection(ctx, "users"); err != nil {
-			slog.Error("failed to ensure collection", "err", err)
+		for _, coll := range DefaultSeedCollections {
+			if err := mongoMgr.EnsureCollection(ctx, coll); err != nil {
+				slog.Error("failed to ensure collection", "collection", coll, "err", err)
+			}
 		}
 	}
 
@@ -58,8 +59,7 @@ func main() {
 		slog.Error("failed to connect to valkey", "err", err)
 	}
 
-	// Set global service managers for handlers
-	setServiceManagers(mongoMgr, amqpMgr, valkeyMgr)
+	setServiceManagers(cfg, mongoMgr, amqpMgr, valkeyMgr)
 
 	// Setup HTTP routes
 	mux := http.NewServeMux()
@@ -70,12 +70,18 @@ func main() {
 	mux.HandleFunc("/status/valkey", handleStatusValkey)
 	mux.HandleFunc("POST /seed", handleSeed)
 
+	writeTimeout := time.Duration(cfg.SeedHTTPTimeoutSec) * time.Second
+	if writeTimeout < 30*time.Second {
+		writeTimeout = 30 * time.Second
+	}
+	writeTimeout += 30 * time.Second
+
 	srv := &http.Server{
 		Addr:         cfg.ListenAddr,
 		Handler:      mux,
 		ErrorLog:     slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
 		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		WriteTimeout: writeTimeout,
 		IdleTimeout:  60 * time.Second,
 	}
 
@@ -165,7 +171,8 @@ func parseLogLevel(levelStr string) slog.Level {
 	}
 }
 
-func setServiceManagers(mongo *MongoDBManager, amqp *RabbitMQManager, valkey *ValkeyManager) {
+func setServiceManagers(cfg *Config, mongo *MongoDBManager, amqp *RabbitMQManager, valkey *ValkeyManager) {
+	appCfg = cfg
 	mongoMgr = mongo
 	amqpMgr = amqp
 	valkeyMgr = valkey

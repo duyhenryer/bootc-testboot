@@ -175,8 +175,7 @@ bootc/apps/<name>/
 Then:
 1. Add the app source under `repos/<name>/` (with `go.mod` for Go apps)
 2. The `make apps` target auto-discovers and builds all Go apps to `output/bin/`
-3. Add the binary name to `EXPECTED_BINS` in `Makefile` for smoke tests
-4. Add the service name to `EXPECTED_SVCS` in `Makefile` for smoke tests
+3. Extend the **`test-smoke-run`** recipe in the repo root `Makefile` (binary `for` loop and `systemctl is-enabled` lists) so smoke checks cover the new binary and systemd units
 
 ---
 
