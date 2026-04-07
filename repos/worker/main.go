@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,37 +32,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize service managers
 	mongoMgr := &MongoDBManager{}
 	amqpMgr := &RabbitMQManager{}
 	valkeyMgr := &ValkeyManager{}
-
-	ctx := context.Background()
-	mongoURI := cfg.buildMongoDBURI()
-	if err := mongoMgr.Connect(ctx, mongoURI, cfg.MongoDBName, cfg.MongoDBMaxPoolSize); err != nil {
-		slog.Error("failed to connect to mongodb", "err", err)
-	} else {
-		for _, coll := range DefaultSeedCollections {
-			if err := mongoMgr.EnsureCollection(ctx, coll); err != nil {
-				slog.Error("failed to ensure collection", "collection", coll, "err", err)
-			}
-		}
-	}
-
-	// Connect to RabbitMQ
-	rabbitURI := cfg.buildRabbitMQURI()
-	if err := amqpMgr.Connect(ctx, rabbitURI, cfg.RabbitMQQueue); err != nil {
-		slog.Error("failed to connect to rabbitmq", "err", err)
-	}
-
-	// Connect to Valkey
-	if err := valkeyMgr.Connect(ctx, cfg.ValkeyAddr, cfg.ValkeyDB); err != nil {
-		slog.Error("failed to connect to valkey", "err", err)
-	}
-
 	setServiceManagers(cfg, mongoMgr, amqpMgr, valkeyMgr)
 
-	// Setup HTTP routes
+	// HTTP must listen before backend connections so systemd ExecStartPost and
+	// probes see an open port; /health may stay 503 until deps are up.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleRoot)
 	mux.HandleFunc("/health", handleHealth)
@@ -77,7 +54,6 @@ func main() {
 	writeTimeout += 30 * time.Second
 
 	srv := &http.Server{
-		Addr:         cfg.ListenAddr,
 		Handler:      mux,
 		ErrorLog:     slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
 		ReadTimeout:  5 * time.Second,
@@ -85,14 +61,40 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Start server in goroutine
+	ln, err := net.Listen("tcp", cfg.ListenAddr)
+	if err != nil {
+		slog.Error("listen failed", "addr", cfg.ListenAddr, "err", err)
+		os.Exit(1)
+	}
+
 	go func() {
-		slog.Info("worker listening", "version", version, "addr", cfg.ListenAddr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("listen failed", "err", err)
+		slog.Info("worker listening", "version", version, "addr", ln.Addr().String())
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			slog.Error("serve failed", "err", err)
 			os.Exit(1)
 		}
 	}()
+
+	ctx := context.Background()
+	mongoURI := cfg.buildMongoDBURI()
+	if err := mongoMgr.Connect(ctx, mongoURI, cfg.MongoDBName, cfg.MongoDBMaxPoolSize); err != nil {
+		slog.Error("failed to connect to mongodb", "err", err)
+	} else {
+		for _, coll := range DefaultSeedCollections {
+			if err := mongoMgr.EnsureCollection(ctx, coll); err != nil {
+				slog.Error("failed to ensure collection", "collection", coll, "err", err)
+			}
+		}
+	}
+
+	rabbitURI := cfg.buildRabbitMQURI()
+	if err := amqpMgr.Connect(ctx, rabbitURI, cfg.RabbitMQQueue); err != nil {
+		slog.Error("failed to connect to rabbitmq", "err", err)
+	}
+
+	if err := valkeyMgr.Connect(ctx, cfg.ValkeyAddr, cfg.ValkeyDB); err != nil {
+		slog.Error("failed to connect to valkey", "err", err)
+	}
 
 	// Wait for shutdown signal
 	quit := make(chan os.Signal, 1)
