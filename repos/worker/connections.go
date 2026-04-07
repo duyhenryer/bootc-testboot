@@ -4,30 +4,33 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/redis/go-redis/v9"
+	"github.com/streadway/amqp"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"github.com/redis/go-redis/v9"
-	"github.com/streadway/amqp"
 )
 
-// MongoDBManager handles connections and operations to MongoDB
+// MongoDBManager handles connections and operations to MongoDB (multi-collection).
 type MongoDBManager struct {
-	client     *mongo.Client
-	db         *mongo.Database
-	collection *mongo.Collection
+	client *mongo.Client
+	db     *mongo.Database
 }
 
-func (m *MongoDBManager) Connect(ctx context.Context, uri string, dbName string) error {
-	slog.Debug("mongodb connecting", "uri", uri, "db", dbName)
+func (m *MongoDBManager) Connect(ctx context.Context, uri string, dbName string, maxPoolSize uint64) error {
+	slog.Debug("mongodb connecting", "uri", uri, "db", dbName, "max_pool_size", maxPoolSize)
 
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+	opts := options.Client().ApplyURI(uri)
+	if maxPoolSize > 0 {
+		opts.SetMaxPoolSize(maxPoolSize)
+	}
+
+	client, err := mongo.Connect(ctx, opts)
 	if err != nil {
 		slog.Error("mongodb connect failed", "err", err)
 		return err
 	}
 
-	// Test connection
 	if err = client.Ping(ctx, nil); err != nil {
 		slog.Error("mongodb ping failed", "err", err)
 		client.Disconnect(ctx)
@@ -36,20 +39,34 @@ func (m *MongoDBManager) Connect(ctx context.Context, uri string, dbName string)
 
 	m.client = client
 	m.db = client.Database(dbName)
-	m.collection = m.db.Collection("users")
 
 	slog.Info("mongodb connected", "db", dbName)
 	return nil
 }
 
+// indexSpec returns unique index key field for a collection name.
+func indexSpecForCollection(name string) (key string, ok bool) {
+	switch name {
+	case "users":
+		return "user_id", true
+	case "orders":
+		return "order_id", true
+	case "events":
+		return "event_id", true
+	case "metrics":
+		return "metric_id", true
+	default:
+		return "", false
+	}
+}
+
 func (m *MongoDBManager) EnsureCollection(ctx context.Context, name string) error {
 	if m.db == nil {
-		return nil // Not connected yet
+		return nil
 	}
 
 	slog.Debug("mongodb ensuring collection", "collection", name)
 
-	// Check if collection exists
 	collections, err := m.db.ListCollectionNames(ctx, bson.M{})
 	if err != nil {
 		slog.Error("mongodb list collections failed", "err", err)
@@ -65,44 +82,47 @@ func (m *MongoDBManager) EnsureCollection(ctx context.Context, name string) erro
 	}
 
 	if !exists {
-		// Create collection
 		if err := m.db.CreateCollection(ctx, name); err != nil {
 			slog.Warn("mongodb create collection warning", "err", err)
-			// Ignore error if collection was just created by another goroutine
 		}
 		slog.Info("mongodb collection created", "collection", name)
 	} else {
 		slog.Debug("mongodb collection already exists", "collection", name)
 	}
 
-	// Ensure indexes
-	indexModel := mongo.IndexModel{
-		Keys: bson.D{{Key: "user_id", Value: 1}},
-		Options: options.Index().SetUnique(true),
+	key, ok := indexSpecForCollection(name)
+	if !ok {
+		return nil
 	}
 
-	_, err = m.collection.Indexes().CreateOne(ctx, indexModel)
-	if err != nil {
-		slog.Warn("mongodb create index warning", "err", err)
+	coll := m.db.Collection(name)
+	indexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: key, Value: 1}},
+		Options: options.Index().SetUnique(true),
+	}
+	if _, err := coll.Indexes().CreateOne(ctx, indexModel); err != nil {
+		slog.Warn("mongodb create index warning", "collection", name, "key", key, "err", err)
 	}
 
 	return nil
 }
 
-func (m *MongoDBManager) InsertMany(ctx context.Context, docs []interface{}) (int, error) {
-	if m.collection == nil {
+// InsertMany inserts into the named collection (unordered bulk).
+func (m *MongoDBManager) InsertMany(ctx context.Context, collectionName string, docs []interface{}) (int, error) {
+	if m.db == nil || len(docs) == 0 {
 		return 0, nil
 	}
 
-	result, err := m.collection.InsertMany(ctx, docs)
+	coll := m.db.Collection(collectionName)
+	opts := options.InsertMany().SetOrdered(false)
+
+	result, err := coll.InsertMany(ctx, docs, opts)
 	if err != nil {
-		slog.Error("mongodb insert many failed", "err", err)
+		slog.Error("mongodb insert many failed", "collection", collectionName, "err", err)
 		return 0, err
 	}
 
-	count := len(result.InsertedIDs)
-	slog.Info("mongodb inserted documents", "count", count)
-	return count, nil
+	return len(result.InsertedIDs), nil
 }
 
 func (m *MongoDBManager) Close(ctx context.Context) error {
@@ -119,18 +139,25 @@ func (m *MongoDBManager) Close(ctx context.Context) error {
 	return nil
 }
 
-func (m *MongoDBManager) Count(ctx context.Context) (int64, error) {
-	if m.collection == nil {
+// Count returns estimated document count for a collection.
+func (m *MongoDBManager) Count(ctx context.Context, collectionName string) (int64, error) {
+	if m.db == nil {
 		return 0, nil
 	}
 
-	count, err := m.collection.EstimatedDocumentCount(ctx)
+	coll := m.db.Collection(collectionName)
+	count, err := coll.EstimatedDocumentCount(ctx)
 	if err != nil {
-		slog.Error("mongodb count failed", "err", err)
+		slog.Error("mongodb count failed", "collection", collectionName, "err", err)
 		return 0, err
 	}
 
 	return count, nil
+}
+
+// Connected reports whether MongoDB is usable.
+func (m *MongoDBManager) Connected() bool {
+	return m != nil && m.db != nil
 }
 
 // RabbitMQManager handles connections to RabbitMQ
@@ -160,7 +187,6 @@ func (r *RabbitMQManager) Connect(ctx context.Context, uri string, queueName str
 	r.channel = channel
 	r.queue = queueName
 
-	// Declare queue
 	if err := r.EnsureQueue(ctx, queueName); err != nil {
 		slog.Warn("rabbitmq ensure queue warning", "err", err)
 	}
@@ -177,12 +203,12 @@ func (r *RabbitMQManager) EnsureQueue(ctx context.Context, queueName string) err
 	slog.Debug("rabbitmq ensuring queue", "queue", queueName)
 
 	_, err := r.channel.QueueDeclare(
-		queueName, // name
-		true,      // durable
-		false,     // auto-delete
-		false,     // exclusive
-		false,     // no-wait
-		nil,       // arguments
+		queueName,
+		true,
+		false,
+		false,
+		false,
+		nil,
 	)
 	if err != nil {
 		slog.Warn("rabbitmq queue declare warning", "err", err)
@@ -228,7 +254,6 @@ func (v *ValkeyManager) Connect(ctx context.Context, addr string, db int) error 
 		DB:   db,
 	})
 
-	// Test connection
 	if err := client.Ping(ctx).Err(); err != nil {
 		slog.Error("valkey ping failed", "err", err)
 		return err
@@ -259,9 +284,8 @@ func (v *ValkeyManager) Info(ctx context.Context) (map[string]string, error) {
 		return map[string]string{}, err
 	}
 
-	// Parse info (simplified)
 	result := map[string]string{
-		"info": info[:min(len(info), 100)], // First 100 chars
+		"info": info[:min(len(info), 100)],
 	}
 	return result, nil
 }

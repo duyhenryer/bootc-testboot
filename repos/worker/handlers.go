@@ -11,6 +11,7 @@ import (
 
 // Global service managers (set in main.go)
 var (
+	appCfg    *Config
 	mongoMgr  *MongoDBManager
 	amqpMgr   *RabbitMQManager
 	valkeyMgr *ValkeyManager
@@ -73,16 +74,28 @@ func handleStatusMongoDB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var status string
-	var count int64
+	dbName := "testboot_db"
+	if appCfg != nil && appCfg.MongoDBName != "" {
+		dbName = appCfg.MongoDBName
+	}
 
-	if mongoMgr != nil && mongoMgr.collection != nil {
+	var status string
+	collCounts := map[string]int64{}
+	var total int64
+
+	if mongoMgr != nil && mongoMgr.Connected() {
 		status = "connected"
-		var err error
-		count, err = mongoMgr.Count(context.Background())
-		if err != nil {
-			status = "error"
-			slog.Warn("mongodb count failed", "err", err)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		for _, name := range DefaultSeedCollections {
+			c, err := mongoMgr.Count(ctx, name)
+			if err != nil {
+				status = "error"
+				slog.Warn("mongodb count failed", "collection", name, "err", err)
+				break
+			}
+			collCounts[name] = c
+			total += c
 		}
 	} else {
 		status = "disconnected"
@@ -91,12 +104,12 @@ func handleStatusMongoDB(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":         status,
-		"database":       "testboot_db",
-		"collection":     "users",
-		"document_count": count,
+		"status":          status,
+		"database":        dbName,
+		"collections":     collCounts,
+		"document_count":  total,
 	})
-	slog.Debug("GET /status/mongodb responded", "status", status, "count", count)
+	slog.Debug("GET /status/mongodb responded", "status", status, "count", total)
 }
 
 func handleStatusRabbitMQ(w http.ResponseWriter, r *http.Request) {
@@ -162,7 +175,6 @@ func handleSeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse request body
 	defer r.Body.Close()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -186,43 +198,43 @@ func handleSeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Default count if not provided
-	if req.Count == 0 {
-		req.Count = 100
+	timeoutSec := 1800
+	batchSize := 1000
+	if appCfg != nil {
+		timeoutSec = appCfg.SeedHTTPTimeoutSec
+		batchSize = appCfg.SeedBatchSize
 	}
+	if timeoutSec < 30 {
+		timeoutSec = 30
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+	defer cancel()
 
-	// Seed data
 	startTime := time.Now()
-	var inserted int
 	var errMsg string
 
-	if mongoMgr != nil && mongoMgr.collection != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+	if mongoMgr == nil || !mongoMgr.Connected() {
+		errMsg = "mongodb not connected"
+		slog.Warn("seeding skipped - mongodb not connected")
+		writeSeedError(w, errMsg)
+		return
+	}
 
-		var err error
-		inserted, err = SeedCollection(ctx, mongoMgr, "users", req.Count)
+	mbMode := req.TargetSizeMB > 0 || len(req.Collections) > 0 || req.Parallel != nil || req.BatchSize > 0
+	legacyOnly := !mbMode
+	if legacyOnly {
+		if req.Count == 0 {
+			req.Count = 100
+		}
+		inserted, err := SeedCollectionUsers(ctx, mongoMgr, req.Count)
 		if err != nil {
 			errMsg = err.Error()
 			slog.Error("seeding failed", "err", err)
-		} else {
-			slog.Info("seeding completed", "count", inserted, "duration_ms", time.Since(startTime).Milliseconds())
+			writeSeedError(w, errMsg)
+			return
 		}
-	} else {
-		errMsg = "mongodb not connected"
-		slog.Warn("seeding skipped - mongodb not connected")
-	}
-
-	// Return response
-	w.Header().Set("Content-Type", "application/json")
-	if errMsg != "" {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status":       "error",
-			"error":        errMsg,
-			"collection":   "users",
-		})
-	} else {
+		slog.Info("seeding completed", "mode", "legacy_users", "count", inserted, "duration_ms", time.Since(startTime).Milliseconds())
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"inserted":    inserted,
@@ -230,12 +242,61 @@ func handleSeed(w http.ResponseWriter, r *http.Request) {
 			"status":      "success",
 			"duration_ms": time.Since(startTime).Milliseconds(),
 		})
+		return
 	}
+
+	targetMB := req.TargetSizeMB
+	if targetMB == 0 && appCfg != nil {
+		targetMB = appCfg.SeedTargetSizeMB
+	}
+	if req.BatchSize > 0 {
+		batchSize = req.BatchSize
+	}
+	parallel := true
+	if req.Parallel != nil {
+		parallel = *req.Parallel
+	}
+
+	res, err := SeedParallel(ctx, mongoMgr, SeedParams{
+		TargetSizeMB: targetMB,
+		Collections:  req.Collections,
+		BatchSize:    batchSize,
+		Parallel:     parallel,
+	})
+	if err != nil {
+		errMsg = err.Error()
+		slog.Error("seeding failed", "err", err)
+		writeSeedError(w, errMsg)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":         "success",
+		"inserted":       res.TotalInserted,
+		"by_collection":  res.ByCollection,
+		"duration_ms":    time.Since(startTime).Milliseconds(),
+		"target_size_mb": clampSeedTargetMB(targetMB),
+	})
+}
+
+func writeSeedError(w http.ResponseWriter, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusInternalServerError)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "error",
+		"error":  msg,
+	})
 }
 
 type seedRequest struct {
-	Count      int  `json:"count"`
-	ClearFirst bool `json:"clear_first"`
+	Count          int      `json:"count"`
+	ClearFirst     bool     `json:"clear_first"`
+	TargetSizeMB   int      `json:"target_size_mb"`
+	Collections    []string `json:"collections"`
+	Parallel       *bool    `json:"parallel"`
+	BatchSize      int      `json:"batch_size"`
 }
 
 func getHealthStatus() map[string]interface{} {

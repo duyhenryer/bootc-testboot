@@ -13,7 +13,7 @@ func HealthCheck(ctx context.Context) (bool, map[string]string) {
 	}
 
 	// Check MongoDB
-	if mongoMgr != nil && mongoMgr.collection != nil {
+	if mongoMgr != nil && mongoMgr.Connected() {
 		status["mongodb"] = "connected"
 	}
 
