@@ -18,7 +18,8 @@ type MongoDBManager struct {
 }
 
 func (m *MongoDBManager) Connect(ctx context.Context, uri string, dbName string, maxPoolSize uint64) error {
-	slog.Debug("mongodb connecting", "uri", uri, "db", dbName, "max_pool_size", maxPoolSize)
+	uri = escapeMongoDBCredentials(uri)
+	slog.Debug("mongodb connecting", "db", dbName, "max_pool_size", maxPoolSize)
 
 	opts := options.Client().ApplyURI(uri)
 	if maxPoolSize > 0 {
