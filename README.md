@@ -57,7 +57,12 @@ make build BASE_DISTRO=centos-stream9
 
 # 4. Lint the image
 make lint
+
+# 5. Manifest + Trivy (optional); image smoke is: make build && make test-smoke
+make audit
 ```
+
+See [docs/project/003-deploying-and-upgrading.md](docs/project/003-deploying-and-upgrading.md) Part H (post-upgrade, incidents, SSH).
 
 > Disk images (AMI, VMDK, OVA, QCOW2, ISO) are built exclusively in CI via
 > `workflow_dispatch` on [`build-artifacts.yml`](.github/workflows/build-artifacts.yml). The default **base distro** is **all** (all four distros); override to a single distro when needed. See [CI Architecture](#ci-architecture-distribution-model) below.
@@ -90,7 +95,7 @@ repos/
     main.go, go.mod, main_test.go
 Containerfile              Layer 2: application image
 scripts/verify-ghcr-packages.sh  Post-publish GHCR check (also: make verify-ghcr)
-Makefile                   Run `make help` — base, build, audit, verify-ghcr, test-smoke, lint-strict, …
+Makefile                   Run `make help` — base, build, audit, verify-ghcr, test-smoke, lint, …
 ```
 
 ## Adding a New App
@@ -121,7 +126,7 @@ graph TD
     end
 
     subgraph PR["PR Checks (build-bootc.yml)"]
-        PR1[Pull Request] --> PR2(Build single-arch + lint-strict)
+        PR1[Pull Request] --> PR2(Build single-arch + lint)
     end
 
     subgraph L3["Layer 3: build-artifacts.yml (workflow_dispatch)"]

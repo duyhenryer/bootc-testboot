@@ -1,0 +1,8 @@
+[Unit]
+Description=bootc-testboot application services (hello, worker)
+After=testboot-infra.target testboot-app-setup.service
+Wants=testboot-app-setup.service
+Requires=testboot-infra.target hello.service worker.service
+
+[Install]
+WantedBy=multi-user.target

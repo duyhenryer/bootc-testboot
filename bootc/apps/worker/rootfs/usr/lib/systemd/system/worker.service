@@ -1,12 +1,15 @@
 [Unit]
 Description=Worker Service - Data Seeding and Infrastructure Verification
-After=network-online.target testboot-app-setup.service
-Wants=network-online.target testboot-app-setup.service
+After=network-online.target testboot-app-setup.service testboot-infra.target
+Wants=network-online.target testboot-app-setup.service testboot-infra.target
+PartOf=testboot-apps.target
 
 [Service]
 Type=simple
 User=worker
 Group=worker
+NoNewPrivileges=yes
+PrivateTmp=yes
 StateDirectory=bootc-testboot/worker
 LogsDirectory=bootc-testboot/worker
 Environment=LOG_FILE=/var/log/bootc-testboot/worker/worker.log
@@ -32,4 +35,4 @@ Restart=always
 RestartSec=5
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=testboot-apps.target

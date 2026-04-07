@@ -152,6 +152,12 @@ jobs:
             $TAGS \
             -f Containerfile .
 
+      - name: Bootc version
+        run: |
+          echo "=== bootc RPM / CLI — ${{ matrix.distro }} (app image :latest) ==="
+          podman run --rm ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:latest \
+            bash -c 'rpm -q bootc 2>/dev/null || true; bootc --version 2>/dev/null || true'
+
       - name: Strict lint
         run: podman run --rm ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:latest bootc container lint --fatal-warnings || exit 1
 

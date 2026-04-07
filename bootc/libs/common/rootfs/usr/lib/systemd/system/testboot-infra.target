@@ -1,0 +1,10 @@
+[Unit]
+Description=bootc-testboot infrastructure (MongoDB, Valkey, RabbitMQ, nginx)
+# mongodb-setup runs before mongod on first boot; harmless no-op when skipped.
+After=network-online.target mongodb-setup.service
+Wants=network-online.target mongodb-setup.service
+Requires=mongod.service valkey.service rabbitmq-server.service nginx.service
+After=mongod.service valkey.service rabbitmq-server.service nginx.service
+
+[Install]
+WantedBy=multi-user.target
