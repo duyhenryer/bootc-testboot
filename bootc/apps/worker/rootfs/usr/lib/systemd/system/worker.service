@@ -27,9 +27,10 @@ EnvironmentFile=-/var/lib/bootc-testboot/worker/worker.secrets.overrides
 
 ExecStart=/usr/bin/worker
 
-# Optional: run healthcheck script
+# Boot probe: GET / returns 200 as soon as the process listens (deps may still be connecting).
+# Use /health in timers for full readiness (503 until Mongo+RabbitMQ+Valkey are up).
 ExecStartPost=/usr/bin/env LOG_FILE=/var/log/bootc-testboot/worker/healthcheck.log \
-  /usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8001/health 10
+  /usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8001/ 5 200 30 1
 
 Restart=always
 RestartSec=5
