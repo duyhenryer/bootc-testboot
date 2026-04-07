@@ -1,0 +1,37 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "description": "Group Go module updates (hello + worker)",
+      "matchManagers": ["gomod"],
+      "matchFileNames": ["repos/**/go.mod"],
+      "groupName": "go modules"
+    },
+    {
+      "description": "Fedora 40 base: keep fedora-bootc on major 40 only",
+      "matchFileNames": ["base/fedora/40/**"],
+      "matchPackageNames": ["quay.io/fedora/fedora-bootc"],
+      "allowedVersions": "/^40$/"
+    },
+    {
+      "description": "Fedora 41 base: keep fedora-bootc on major 41 only",
+      "matchFileNames": ["base/fedora/41/**"],
+      "matchPackageNames": ["quay.io/fedora/fedora-bootc"],
+      "allowedVersions": "/^41$/"
+    },
+    {
+      "description": "CentOS Stream 9 base: keep centos-bootc on stream9 only",
+      "matchFileNames": ["base/centos/stream9/**"],
+      "matchPackageNames": ["quay.io/centos-bootc/centos-bootc"],
+      "allowedVersions": "/^stream9$/"
+    },
+    {
+      "description": "CentOS Stream 10 base: keep centos-bootc on stream10 only",
+      "matchFileNames": ["base/centos/stream10/**"],
+      "matchPackageNames": ["quay.io/centos-bootc/centos-bootc"],
+      "allowedVersions": "/^stream10$/"
+    }
+  ]
+}
