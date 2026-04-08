@@ -1,9 +1,13 @@
 # worker.service: app logs (User=worker; fd kept open — use copytruncate)
 /var/log/bootc-testboot/worker/*.log {
-    weekly
-    rotate 4
+    daily
+    # weekly
+    rotate 28
     copytruncate
     missingok
     notifempty
     su worker worker
+
+    # maxsize 50M
+    # size 100M
 }
