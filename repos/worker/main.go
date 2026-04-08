@@ -87,6 +87,11 @@ func main() {
 		}
 	}
 
+	seedCtx, seedCancel := context.WithCancel(context.Background())
+	if mongoMgr.Connected() {
+		go StartContinuousSeeding(seedCtx, cfg, mongoMgr)
+	}
+
 	rabbitURI := cfg.buildRabbitMQURI()
 	if err := amqpMgr.Connect(ctx, rabbitURI, cfg.RabbitMQQueue); err != nil {
 		slog.Error("failed to connect to rabbitmq", "err", err)
@@ -105,6 +110,7 @@ func main() {
 	// Graceful shutdown with 10-second timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	seedCancel() // Stop the continuous seeder
 
 	// Close managers
 	if err := mongoMgr.Close(ctx); err != nil {

@@ -24,6 +24,8 @@ type Config struct {
 	SeedHTTPTimeoutSec int
 	SeedBatchSize      int
 	SeedTargetSizeMB   int
+	SeedContinuous     bool
+	SeedRatePerSec     int
 }
 
 func loadConfig() (*Config, error) {
@@ -44,6 +46,8 @@ func loadConfig() (*Config, error) {
 		SeedHTTPTimeoutSec: getEnvInt("SEED_HTTP_TIMEOUT_SEC", 1800),
 		SeedBatchSize:      getEnvInt("SEED_BATCH_SIZE", 1000),
 		SeedTargetSizeMB:   getEnvInt("SEED_TARGET_SIZE_MB", 0),
+		SeedContinuous:     getEnvBool("SEED_CONTINUOUS", true),
+		SeedRatePerSec:     getEnvInt("SEED_RATE_PER_SEC", 5),
 	}
 
 	if strings.TrimSpace(cfg.MongoDBURI) == "" {
@@ -97,4 +101,16 @@ func getEnvUint64(key string, defaultValue uint64) uint64 {
 		return defaultValue
 	}
 	return u
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	b, err := strconv.ParseBool(strings.TrimSpace(value))
+	if err != nil {
+		return defaultValue
+	}
+	return b
 }

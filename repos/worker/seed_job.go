@@ -188,3 +188,65 @@ func seedOneCollection(ctx context.Context, m *MongoDBManager, coll string, tota
 	}
 	return inserted, nil
 }
+
+// StartContinuousSeeding begins a background task that seeds documents slowly over time.
+func StartContinuousSeeding(ctx context.Context, cfg *Config, m *MongoDBManager) {
+	if !cfg.SeedContinuous || cfg.SeedRatePerSec <= 0 || m == nil {
+		slog.Info("continuous seeding disabled")
+		return
+	}
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	logTick := 0
+	var totalInserted int
+
+	slog.Info("mongodb continuous seeding started", "rate_per_sec", cfg.SeedRatePerSec)
+
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("mongodb continuous seeding stopped", "total_inserted", totalInserted)
+			return
+		case <-ticker.C:
+			collMap := make(map[string][]interface{})
+
+			for i := 0; i < cfg.SeedRatePerSec; i++ {
+				coll := DefaultSeedCollections[rng.Intn(len(DefaultSeedCollections))]
+				var doc interface{}
+				switch coll {
+				case "users":
+					doc = GenerateMockUser(rng)
+				case "orders":
+					doc = GenerateMockOrder(rng)
+				case "events":
+					doc = GenerateMockEvent(rng)
+				case "metrics":
+					doc = GenerateMockMetric(rng)
+				}
+				if doc != nil {
+					collMap[coll] = append(collMap[coll], doc)
+				}
+			}
+
+			var batchInserted int
+			for coll, items := range collMap {
+				ins, err := m.InsertMany(ctx, coll, items)
+				if err != nil {
+					slog.Warn("continuous seed insert failed", "collection", coll, "err", err)
+				} else {
+					batchInserted += ins
+				}
+			}
+
+			totalInserted += batchInserted
+			logTick++
+			if logTick >= 10 { // Every 10 seconds
+				slog.Info("mongodb continuous stream active", "total_inserted_so_far", totalInserted)
+				logTick = 0
+			}
+		}
+	}
+}
