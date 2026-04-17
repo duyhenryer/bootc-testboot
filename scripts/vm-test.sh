@@ -60,34 +60,62 @@ sleep 3
 echo "  Container status: $(podman inspect --format '{{.State.Status}}' "${VM_NAME}" 2>/dev/null || echo 'not found')"
 
 # ---------------------------------------------------------------------------
-# Wait for SSH via bcvk (has internal 240s retry with progress monitoring)
-# bcvk ephemeral ssh handles its own wait_for_readiness polling.
-# We call it ONCE — do NOT loop, it retries internally.
+# Wait for VM port 2222 (QEMU hostfwd → guest :22) to accept connections.
+# This proves sshd inside the VM is up before we attempt bcvk ssh.
+# On nested KVM (GitHub runners) boot can take 4-5 minutes.
 # ---------------------------------------------------------------------------
-echo "==> Connecting via bcvk ephemeral ssh (timeout ~240s built-in)"
+SSH_TIMEOUT=360
+echo "==> Waiting for VM sshd on port 2222 (timeout ${SSH_TIMEOUT}s)"
 
-if ! bcvk ephemeral ssh "${VM_NAME}" 'echo SSH_CONNECTED' 2>&1; then
-    echo "FAIL: bcvk ephemeral ssh could not connect"
+SECONDS=0
+PORT_READY=0
+while [ $SECONDS -lt $SSH_TIMEOUT ]; do
+    if podman exec "${VM_NAME}" bash -c 'timeout 2 bash -c "echo > /dev/tcp/127.0.0.1/2222"' &>/dev/null; then
+        PORT_READY=1
+        echo "  OK: port 2222 open after ${SECONDS}s"
+        break
+    fi
+    sleep 5
+done
+
+if [ $PORT_READY -eq 0 ]; then
+    echo "FAIL: port 2222 not open after ${SSH_TIMEOUT}s"
     echo ""
     echo "--- Diagnostics ---"
     echo "Container status: $(podman inspect --format '{{.State.Status}} pid={{.State.Pid}}' "${VM_NAME}" 2>/dev/null || echo 'not found')"
     echo ""
-    echo "--- SSH key in container ---"
-    podman exec "${VM_NAME}" ls -la /run/tmproot/var/lib/bcvk/ssh 2>/dev/null || echo "(key not found at /run/tmproot/var/lib/bcvk/ssh)"
-    podman exec "${VM_NAME}" ls -la /var/lib/bcvk/ssh 2>/dev/null || echo "(key not found at /var/lib/bcvk/ssh)"
+    echo "--- VM journal (last 40 lines) ---"
+    podman exec "${VM_NAME}" tail -40 /run/journal.log 2>/dev/null || echo "(no journal)"
     echo ""
-    echo "--- ssh binary in container ---"
-    podman exec "${VM_NAME}" which ssh 2>/dev/null || echo "(ssh binary not found in container)"
-    podman exec "${VM_NAME}" ls -la /usr/bin/ssh 2>/dev/null || echo "(no /usr/bin/ssh)"
+    echo "--- Processes in container ---"
+    podman top "${VM_NAME}" 2>/dev/null || true
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Connect via bcvk ssh — port is confirmed open, retry up to 3 times in case
+# bcvk needs a moment to detect readiness.
+# ---------------------------------------------------------------------------
+echo "==> Connecting via bcvk ephemeral ssh"
+
+SSH_OK=0
+for attempt in 1 2 3; do
+    if bcvk ephemeral ssh "${VM_NAME}" 'echo SSH_CONNECTED' 2>&1; then
+        SSH_OK=1
+        break
+    fi
+    echo "  Attempt ${attempt}/3 failed, retrying in 10s..."
+    sleep 10
+done
+
+if [ $SSH_OK -eq 0 ]; then
+    echo "FAIL: bcvk ephemeral ssh could not connect (port 2222 is open but SSH handshake failed)"
     echo ""
-    echo "--- Port 2222 check (QEMU hostfwd) ---"
-    podman exec "${VM_NAME}" bash -c 'timeout 3 bash -c "echo | cat > /dev/tcp/127.0.0.1/2222" 2>&1 && echo "port 2222 OPEN" || echo "port 2222 CLOSED"' 2>/dev/null || echo "(check failed)"
+    echo "--- Diagnostics ---"
+    echo "Container status: $(podman inspect --format '{{.State.Status}} pid={{.State.Pid}}' "${VM_NAME}" 2>/dev/null || echo 'not found')"
     echo ""
-    echo "--- VM journal: sshd + network lines ---"
-    podman exec "${VM_NAME}" grep -iE 'ssh|network|login' /run/journal.log 2>/dev/null | tail -20 || echo "(no matching journal lines)"
-    echo ""
-    echo "--- VM journal (last 30 lines) ---"
-    podman exec "${VM_NAME}" tail -30 /run/journal.log 2>/dev/null || echo "(no journal)"
+    echo "--- VM journal: sshd lines ---"
+    podman exec "${VM_NAME}" grep -iE 'ssh' /run/journal.log 2>/dev/null | tail -20 || echo "(no sshd journal lines)"
     echo ""
     echo "--- Direct SSH attempt from inside container ---"
     podman exec "${VM_NAME}" ssh -v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
