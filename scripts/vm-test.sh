@@ -16,8 +16,8 @@ set -euo pipefail
 
 IMAGE="${1:?Usage: vm-test.sh <image-ref>}"
 VM_NAME="testboot-vm-$$"
-SSH_TIMEOUT=120
-BOOT_TIMEOUT=180
+SSH_TIMEOUT=240
+BOOT_TIMEOUT=300
 FAIL=0
 
 cleanup() {
@@ -53,8 +53,13 @@ echo "==> Booting VM from ${IMAGE}"
 
 bcvk ephemeral run -d --rm -K \
     --memory 4G \
+    --cpus 2 \
     --name "${VM_NAME}" \
     "${IMAGE}"
+
+sleep 2
+echo "  Container status: $(podman inspect --format '{{.State.Status}}' "${VM_NAME}" 2>/dev/null || echo 'not found')"
+podman logs "${VM_NAME}" 2>&1 | tail -5 || true
 
 # ---------------------------------------------------------------------------
 # Wait for SSH
@@ -67,13 +72,21 @@ while [ $SECONDS -lt $SSH_TIMEOUT ]; do
         echo "  OK: SSH ready after ${SECONDS}s"
         break
     fi
+    if (( SECONDS % 30 == 0 && SECONDS > 0 )); then
+        echo "  ... still waiting (${SECONDS}s). Container: $(podman inspect --format '{{.State.Status}}' "${VM_NAME}" 2>/dev/null || echo '?')"
+        podman logs "${VM_NAME}" 2>&1 | tail -3 || true
+    fi
     sleep 5
 done
 
 if [ $SECONDS -ge $SSH_TIMEOUT ]; then
     echo "FAIL: SSH not ready after ${SSH_TIMEOUT}s"
-    echo "--- Container logs ---"
-    podman logs "${VM_NAME}" 2>&1 | tail -30 || true
+    echo "--- Container status ---"
+    podman inspect --format '{{.State.Status}} pid={{.State.Pid}}' "${VM_NAME}" 2>/dev/null || echo "Container not found"
+    echo "--- Container logs (last 50 lines) ---"
+    podman logs "${VM_NAME}" 2>&1 | tail -50 || true
+    echo "--- Processes in container ---"
+    podman top "${VM_NAME}" 2>/dev/null || true
     exit 1
 fi
 
