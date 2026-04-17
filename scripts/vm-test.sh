@@ -16,7 +16,6 @@ set -euo pipefail
 
 IMAGE="${1:?Usage: vm-test.sh <image-ref>}"
 VM_NAME="testboot-vm-$$"
-SSH_TIMEOUT=240
 BOOT_TIMEOUT=300
 FAIL=0
 
@@ -57,47 +56,50 @@ bcvk ephemeral run -d --rm -K \
     --name "${VM_NAME}" \
     "${IMAGE}"
 
-sleep 2
+sleep 3
 echo "  Container status: $(podman inspect --format '{{.State.Status}}' "${VM_NAME}" 2>/dev/null || echo 'not found')"
-podman logs "${VM_NAME}" 2>&1 | tail -5 || true
 
 # ---------------------------------------------------------------------------
-# Wait for SSH
+# Wait for SSH via bcvk (has internal 240s retry with progress monitoring)
+# bcvk ephemeral ssh handles its own wait_for_readiness polling.
+# We call it ONCE — do NOT loop, it retries internally.
 # ---------------------------------------------------------------------------
-echo "==> Waiting for SSH (timeout ${SSH_TIMEOUT}s)"
+echo "==> Connecting via bcvk ephemeral ssh (timeout ~240s built-in)"
 
-SECONDS=0
-while [ $SECONDS -lt $SSH_TIMEOUT ]; do
-    if bcvk ephemeral ssh "${VM_NAME}" 'true' 2>/dev/null; then
-        echo "  OK: SSH ready after ${SECONDS}s"
-        break
-    fi
-    if (( SECONDS % 30 == 0 && SECONDS > 0 )); then
-        echo "  ... still waiting (${SECONDS}s). Container: $(podman inspect --format '{{.State.Status}}' "${VM_NAME}" 2>/dev/null || echo '?')"
-        echo "  VM journal (last 5 lines):"
-        podman exec "${VM_NAME}" cat /run/journal.log 2>/dev/null | tail -5 || true
-    fi
-    sleep 5
-done
-
-if [ $SECONDS -ge $SSH_TIMEOUT ]; then
-    echo "FAIL: SSH not ready after ${SSH_TIMEOUT}s"
-    echo "--- Container status ---"
-    podman inspect --format '{{.State.Status}} pid={{.State.Pid}}' "${VM_NAME}" 2>/dev/null || echo "Container not found"
-    echo "--- VM journal: sshd lines ---"
-    podman exec "${VM_NAME}" grep -i ssh /run/journal.log 2>/dev/null || echo "(no sshd lines in journal)"
-    echo "--- VM journal (last 50 lines) ---"
-    podman exec "${VM_NAME}" cat /run/journal.log 2>/dev/null | tail -50 || echo "(no journal output)"
-    echo "--- Port 2222 check inside container ---"
-    podman exec "${VM_NAME}" ss -tlnp 2>/dev/null || podman exec "${VM_NAME}" netstat -tlnp 2>/dev/null || echo "(ss/netstat not available)"
-    echo "--- Direct SSH test from container (port 2222) ---"
-    podman exec "${VM_NAME}" bash -c 'echo | timeout 5 bash -c "cat < /dev/tcp/127.0.0.1/2222" 2>&1 && echo "port 2222 open" || echo "port 2222 closed/timeout"' || true
+if ! bcvk ephemeral ssh "${VM_NAME}" 'echo SSH_CONNECTED' 2>&1; then
+    echo "FAIL: bcvk ephemeral ssh could not connect"
+    echo ""
+    echo "--- Diagnostics ---"
+    echo "Container status: $(podman inspect --format '{{.State.Status}} pid={{.State.Pid}}' "${VM_NAME}" 2>/dev/null || echo 'not found')"
+    echo ""
+    echo "--- SSH key in container ---"
+    podman exec "${VM_NAME}" ls -la /run/tmproot/var/lib/bcvk/ssh 2>/dev/null || echo "(key not found at /run/tmproot/var/lib/bcvk/ssh)"
+    podman exec "${VM_NAME}" ls -la /var/lib/bcvk/ssh 2>/dev/null || echo "(key not found at /var/lib/bcvk/ssh)"
+    echo ""
+    echo "--- ssh binary in container ---"
+    podman exec "${VM_NAME}" which ssh 2>/dev/null || echo "(ssh binary not found in container)"
+    podman exec "${VM_NAME}" ls -la /usr/bin/ssh 2>/dev/null || echo "(no /usr/bin/ssh)"
+    echo ""
+    echo "--- Port 2222 check (QEMU hostfwd) ---"
+    podman exec "${VM_NAME}" bash -c 'timeout 3 bash -c "echo | cat > /dev/tcp/127.0.0.1/2222" 2>&1 && echo "port 2222 OPEN" || echo "port 2222 CLOSED"' 2>/dev/null || echo "(check failed)"
+    echo ""
+    echo "--- VM journal: sshd + network lines ---"
+    podman exec "${VM_NAME}" grep -iE 'ssh|network|login' /run/journal.log 2>/dev/null | tail -20 || echo "(no matching journal lines)"
+    echo ""
+    echo "--- VM journal (last 30 lines) ---"
+    podman exec "${VM_NAME}" tail -30 /run/journal.log 2>/dev/null || echo "(no journal)"
+    echo ""
+    echo "--- Direct SSH attempt from inside container ---"
+    podman exec "${VM_NAME}" ssh -v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        -o ConnectTimeout=5 -o BatchMode=yes \
+        -i /run/tmproot/var/lib/bcvk/ssh -p 2222 root@127.0.0.1 'echo DIRECT_SSH_OK' 2>&1 | tail -30 || true
+    echo ""
     echo "--- Processes in container ---"
     podman top "${VM_NAME}" 2>/dev/null || true
-    echo "--- SSH debug attempt (verbose) ---"
-    RUST_BACKTRACE=1 bcvk ephemeral ssh "${VM_NAME}" 'echo hello' 2>&1 | tail -30 || true
     exit 1
 fi
+
+echo "  OK: SSH connected"
 
 # ---------------------------------------------------------------------------
 # Helper: run command in VM
@@ -122,7 +124,7 @@ echo "==> Waiting for system boot to complete (timeout ${BOOT_TIMEOUT}s)"
 
 SECONDS=0
 while [ $SECONDS -lt $BOOT_TIMEOUT ]; do
-    STATUS=$(bcvk ephemeral ssh "${VM_NAME}" 'systemctl is-system-running 2>/dev/null || true' 2>/dev/null | tr -d '[:space:]' || true)
+    STATUS=$(vm_ssh 'systemctl is-system-running 2>/dev/null' | tr -d '[:space:]')
     case "${STATUS}" in
         running|degraded)
             echo "  OK: system ${STATUS} after ${SECONDS}s"
