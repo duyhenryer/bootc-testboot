@@ -84,12 +84,18 @@ if [ $SECONDS -ge $SSH_TIMEOUT ]; then
     echo "FAIL: SSH not ready after ${SSH_TIMEOUT}s"
     echo "--- Container status ---"
     podman inspect --format '{{.State.Status}} pid={{.State.Pid}}' "${VM_NAME}" 2>/dev/null || echo "Container not found"
-    echo "--- VM journal (full) ---"
-    podman exec "${VM_NAME}" cat /run/journal.log 2>/dev/null | tail -100 || echo "(no journal output)"
+    echo "--- VM journal: sshd lines ---"
+    podman exec "${VM_NAME}" grep -i ssh /run/journal.log 2>/dev/null || echo "(no sshd lines in journal)"
+    echo "--- VM journal (last 50 lines) ---"
+    podman exec "${VM_NAME}" cat /run/journal.log 2>/dev/null | tail -50 || echo "(no journal output)"
+    echo "--- Port 2222 check inside container ---"
+    podman exec "${VM_NAME}" ss -tlnp 2>/dev/null || podman exec "${VM_NAME}" netstat -tlnp 2>/dev/null || echo "(ss/netstat not available)"
+    echo "--- Direct SSH test from container (port 2222) ---"
+    podman exec "${VM_NAME}" bash -c 'echo | timeout 5 bash -c "cat < /dev/tcp/127.0.0.1/2222" 2>&1 && echo "port 2222 open" || echo "port 2222 closed/timeout"' || true
     echo "--- Processes in container ---"
     podman top "${VM_NAME}" 2>/dev/null || true
-    echo "--- SSH debug attempt ---"
-    bcvk ephemeral ssh "${VM_NAME}" 'echo hello' 2>&1 | head -20 || true
+    echo "--- SSH debug attempt (verbose) ---"
+    RUST_BACKTRACE=1 bcvk ephemeral ssh "${VM_NAME}" 'echo hello' 2>&1 | tail -30 || true
     exit 1
 fi
 
