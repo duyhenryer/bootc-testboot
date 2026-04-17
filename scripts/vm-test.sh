@@ -53,7 +53,7 @@ echo "==> Booting VM from ${IMAGE}"
 
 bcvk ephemeral run -d --rm -K \
     --memory 4G \
-    --cpus 2 \
+    --vcpus 2 \
     --name "${VM_NAME}" \
     "${IMAGE}"
 

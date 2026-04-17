@@ -63,11 +63,12 @@ flowchart TB
 | **Apps** | Binaries + systemd units | `COPY bootc/apps/*/rootfs/` → `/usr/bin`, `/usr/lib/systemd/system` |
 | **Configs** | nginx, sshd, etc. | `COPY base/rootfs/` and `COPY bootc/services/*/rootfs/` |
 
-### Makefile: `audit` vs `verify-ghcr`
+### Makefile: `audit`, `audit-all` vs `verify-ghcr`
 
 | Target | When to use | What it does |
 |--------|-------------|--------------|
-| `make audit` | Before push / local CI parity | Builds **all** base images + app image on disk, runs `bootc container lint --fatal-warnings` on each. **No** `podman pull` from GHCR. |
+| `make audit` | Before push / quick local gate | Runs `manifest` + `scan-image`. **No** image build; run `make build && make test-smoke` separately. |
+| `make audit-all` | Full local CI parity | Builds **all** base images + app image on disk, runs `bootc container lint --fatal-warnings` on each. **No** `podman pull` from GHCR. |
 | `make verify-ghcr` | After CI published to GHCR | Runs [`scripts/verify-ghcr-packages.sh`](../../scripts/verify-ghcr-packages.sh): `skopeo inspect` and `podman pull` of **remote** tags, validates artifact paths. Run on a dev machine with free disk; see [005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md). Use `VERIFY_SKIP_PULL=1` for metadata-only. |
 
 ---
@@ -77,7 +78,7 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph Source["Source"]
-        APPS[repos/hello/\nrepos/api/]
+        APPS[repos/hello/\nrepos/worker/]
         CF[Containerfile]
         CONFIGS[base/rootfs/]
     end
@@ -121,7 +122,7 @@ flowchart LR
 make apps                          make build
     │                                  │
     ├─ repos/hello/ → output/bin/      ├─ Containerfile (single FROM fedora-bootc:41)
-    ├─ repos/api/   → output/bin/      │    ├─ RUN dnf install nginx cloud-init ...
+    ├─ repos/worker/ → output/bin/      │    ├─ RUN dnf install nginx cloud-init ...
     └─ ...                             │    ├─ COPY output/bin/ /usr/bin/
                                        │    ├─ COPY base/rootfs /
                                        │    ├─ COPY bootc/apps/*/rootfs/ /
@@ -230,7 +231,7 @@ stateDiagram-v2
     Running --> DownloadOnly: bootc upgrade --download-only
     DownloadOnly --> Staged: Update downloaded
     Staged --> Running: No reboot yet
-    Staged --> Apply: bootc upgrade --from-downloaded --apply
+    Staged --> Apply: bootc upgrade --apply
     Apply --> Reboot: New bootloader entry created
     Reboot --> [*]: New deployment active
 ```
@@ -244,7 +245,7 @@ stateDiagram-v2
 | Phase | Command | When |
 |-------|---------|------|
 | **1. Download** | `bootc upgrade --download-only` | Business hours; no downtime |
-| **2. Apply** | `bootc upgrade --from-downloaded --apply` | Maintenance window; triggers reboot |
+| **2. Apply** | `bootc upgrade --apply` | Maintenance window; triggers reboot |
 
 ### A/B Deployment with OSTree
 
@@ -337,7 +338,7 @@ flowchart TB
 | **nginx** | Already present; add more vhosts/config |
 | **valkey** | `RUN dnf install valkey` + `valkey.service` |
 | **rabbitmq** | `RUN dnf install rabbitmq-server` + systemd unit |
-| **Many apps** | `repos/api/`, `repos/worker/`, `repos/web/`; same Containerfile pattern |
+| **Many apps** | `repos/hello/`, `repos/worker/`, `repos/newapp/`; same Containerfile pattern |
 
 ### Deployment Targets
 
