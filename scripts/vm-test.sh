@@ -129,13 +129,11 @@ for svc in hello worker mongod valkey rabbitmq-server nginx firewalld sshd; do
     fi
 done
 
-for svc in chronyd; do
-    if vm_ssh "systemctl is-active ${svc}" | grep -q "^active$"; then
-        check_pass "${svc} is active"
-    else
-        echo "  WARN: ${svc} is NOT active (non-critical in ephemeral VM)"
-    fi
-done
+if vm_ssh "systemctl is-active chronyd" | grep -q "^active$"; then
+    check_pass "chronyd is active"
+else
+    echo "  WARN: chronyd is NOT active (non-critical in ephemeral VM)"
+fi
 
 # ---------------------------------------------------------------------------
 # Test: custom targets are active
