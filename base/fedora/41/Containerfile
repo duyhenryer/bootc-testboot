@@ -2,7 +2,8 @@
 # Base Image: Fedora bootc 41
 # Layer 1: OS packages + production tuning (shared configs)
 # =============================================================================
-FROM quay.io/fedora/fedora-bootc:41
+ARG BASE_TAG=41
+FROM quay.io/fedora/fedora-bootc:${BASE_TAG}
 
 # --- System packages ---
 RUN dnf install -y \
