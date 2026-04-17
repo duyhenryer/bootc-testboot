@@ -2,7 +2,8 @@
 # Base Image: CentOS Stream 10 bootc
 # Layer 1: OS packages + production tuning (shared configs)
 # =============================================================================
-FROM quay.io/centos-bootc/centos-bootc:stream10
+ARG BASE_TAG=stream10
+FROM quay.io/centos-bootc/centos-bootc:${BASE_TAG}
 
 # --- System packages ---
 RUN dnf install -y epel-release \

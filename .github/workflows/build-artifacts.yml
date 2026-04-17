@@ -27,8 +27,8 @@ on:
         default: 'latest'
 
 env:
-  REGISTRY: ghcr.io
   IMAGE_ROOT: ghcr.io/${{ github.repository }}
+  BOOTC_IMAGE_BUILDER: quay.io/centos-bootc/bootc-image-builder:latest
 
 jobs:
   # --- Optional future aarch64 (not enabled; CI is linux/amd64 only) ---
@@ -131,7 +131,7 @@ jobs:
             -v /var/lib/containers/storage:/var/lib/containers/storage \
             -v $(pwd)/builder:/builder \
             -v $(pwd)/output:/output \
-            quay.io/centos-bootc/bootc-image-builder:latest \
+            ${{ env.BOOTC_IMAGE_BUILDER }} \
             --type ${{ matrix.format }} \
             --rootfs ext4 \
             --config /builder/${{ matrix.format }}/config.toml \

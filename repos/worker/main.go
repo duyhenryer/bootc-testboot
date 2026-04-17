@@ -47,10 +47,7 @@ func main() {
 	mux.HandleFunc("/status/valkey", handleStatusValkey)
 	mux.HandleFunc("POST /seed", handleSeed)
 
-	writeTimeout := time.Duration(cfg.SeedHTTPTimeoutSec) * time.Second
-	if writeTimeout < 30*time.Second {
-		writeTimeout = 30 * time.Second
-	}
+	writeTimeout := max(time.Duration(cfg.SeedHTTPTimeoutSec)*time.Second, 30*time.Second)
 	writeTimeout += 30 * time.Second
 
 	srv := &http.Server{

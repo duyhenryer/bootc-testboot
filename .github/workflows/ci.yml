@@ -17,6 +17,7 @@ concurrency:
 
 env:
   IMAGE_ROOT: ghcr.io/${{ github.repository }}
+  GO_VERSION: "1.25"
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -91,7 +92,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.25"
+          go-version: ${{ env.GO_VERSION }}
       - name: Run tests
         run: |
           for d in repos/*/; do
@@ -135,7 +136,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.25"
+          go-version: ${{ env.GO_VERSION }}
 
       - name: Build Go applications
         run: make apps
@@ -178,3 +179,103 @@ jobs:
           podman save ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:pr-check -o /tmp/bootc-app.tar
           podman run --rm -v /tmp/bootc-app.tar:/scan.tar:ro docker.io/aquasec/trivy:0.69.3 \
             image --input /scan.tar --scanners vuln --severity HIGH,CRITICAL --exit-code 0
+
+  # ---------------------------------------------------------------------------
+  # VM smoke test — boot as real VM via bcvk, verify all services
+  # Runs on every PR for all distros (full matrix).
+  # Uses nested KVM on GitHub-hosted ubuntu runners.
+  # Ref: bootc upstream uses the same approach (bcvk + tmt + nested KVM).
+  # ---------------------------------------------------------------------------
+  test-vm:
+    name: VM smoke test ${{ matrix.distro }}
+    runs-on: ubuntu-latest
+    needs: [test, hadolint, shellcheck, selinux-check]
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        distro:
+          - centos-stream9
+          - centos-stream10
+          - fedora-40
+          - fedora-41
+        include:
+          - distro: centos-stream9
+            containerfile_path: centos/stream9
+          - distro: centos-stream10
+            containerfile_path: centos/stream10
+          - distro: fedora-40
+            containerfile_path: fedora/40
+          - distro: fedora-41
+            containerfile_path: fedora/41
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/free-disk-space
+
+      # --- Enable KVM ---
+      # GitHub-hosted runners have /dev/kvm but permissions are 0660 (root:kvm).
+      # The runner user is not in the kvm group. Fix permissions to 0666.
+      # This is the same approach used by bootc upstream and Android emulator CI.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -la /dev/kvm
+
+      # --- Install Rust toolchain (for bcvk + virtiofsd) ---
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: cargo-vm-tools-${{ runner.os }}-v1
+
+      # --- Install bcvk + virtiofsd ---
+      # virtiofsd from apt is 1.10.x (too old for bcvk 0.13+, needs >= 1.12.0).
+      # Build from crates.io. bcvk has no deb package — install from git.
+      - name: Install bcvk and virtiofsd
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 libseccomp-dev libcap-ng-dev
+          if ! command -v virtiofsd &>/dev/null || [[ "$(virtiofsd --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)" < "1.12" ]]; then
+            cargo install virtiofsd
+            sudo cp ~/.cargo/bin/virtiofsd /usr/libexec/virtiofsd
+          fi
+          if ! command -v bcvk &>/dev/null; then
+            cargo install --locked --git https://github.com/bootc-dev/bcvk bcvk
+          fi
+          echo "bcvk=$(bcvk --version 2>/dev/null || echo 'not found')"
+          echo "virtiofsd=$(virtiofsd --version 2>/dev/null || echo 'not found')"
+
+      # --- Build image (same as pr-check) ---
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build Go applications
+        run: make apps
+
+      - name: Build base image (${{ matrix.distro }})
+        run: |
+          podman build --platform linux/amd64 \
+            -f base/${{ matrix.containerfile_path }}/Containerfile \
+            -t ${{ env.IMAGE_ROOT }}/base/${{ matrix.distro }}:latest .
+
+      - name: Build app image (${{ matrix.distro }})
+        run: |
+          podman build --platform linux/amd64 \
+            --build-arg IMAGE_ROOT=${{ env.IMAGE_ROOT }} \
+            --build-arg BASE_DISTRO=${{ matrix.distro }} \
+            --build-arg BASE_IMAGE_VERSION=latest \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            -t ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:latest \
+            -f Containerfile .
+
+      # --- Run VM test ---
+      - name: VM smoke test (${{ matrix.distro }})
+        run: ./scripts/vm-test.sh "${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:latest"

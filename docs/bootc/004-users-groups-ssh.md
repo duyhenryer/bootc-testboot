@@ -594,8 +594,7 @@ podman run --rm $IMAGE bootc container lint --fatal-warnings
 ```
 
 **In this project:**
-- `make lint` — runs `bootc container lint` on the built image
-- `make lint-strict` — runs with `--fatal-warnings` (used in CI)
+- `make lint` — runs `bootc container lint --fatal-warnings` (same as CI)
 - The `pr-check` job in `ci.yml` runs `bootc container lint --fatal-warnings`
 
 ---

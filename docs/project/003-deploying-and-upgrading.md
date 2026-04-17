@@ -14,6 +14,7 @@ Covers the full lifecycle: building disk images, deploying to cloud/on-prem targ
 - [Part E -- Release Scenarios](#part-e--release-scenarios)
 - [Part F -- Operations and Debugging](#part-f--operations-and-debugging)
 - [Part G -- Partition Planning](#part-g--partition-planning)
+- [Part H -- Post-upgrade and incidents](#part-h--post-upgrade-and-incidents)
 - [Tips and Checklist](#tips-and-checklist)
 - [Quick Reference](#quick-reference)
 
@@ -56,12 +57,17 @@ bootc-testboot/
 ├── bootc/
 │   ├── libs/common/rootfs/       # Shared libraries and scripts
 │   ├── apps/hello/rootfs/        # App config overlay (systemd unit, tmpfiles)
+│   ├── apps/worker/rootfs/       # Worker app config overlay
 │   ├── services/nginx/rootfs/    # nginx config overlay
 │   ├── services/mongodb/rootfs/  # MongoDB config overlay
 │   ├── services/valkey/rootfs/   # Valkey config overlay
 │   └── services/rabbitmq/rootfs/ # RabbitMQ config overlay (x86_64 only)
 ├── repos/
-│   └── hello/                    # Go HTTP hello world
+│   ├── hello/                    # Go HTTP hello world
+│   │   ├── main.go
+│   │   ├── go.mod
+│   │   └── main_test.go
+│   └── worker/                   # Go backend worker (MongoDB/RabbitMQ/Valkey)
 │       ├── main.go
 │       ├── go.mod
 │       └── main_test.go
@@ -188,7 +194,7 @@ Connect via **AWS Systems Manager Session Manager** (or SSH if configured):
 aws ssm start-session --target i-0123456789abcdef0
 ```
 
-On the instance there is **no** project `Makefile` — the OS is the bootc deployment, not a dev checkout. Verify by hand. For production-safe upgrades, rollbacks, debugging, and emergencies on the host, continue to [Part B](#part-b--operations-runbook) below.
+On the instance there is **no** project `Makefile` — the OS is the bootc deployment, not a dev checkout. Verify by hand. For production-safe upgrades, rollbacks, debugging, and emergencies on the host, continue to [Part B](#part-b--artifacts-and-bootc-image-builder) below.
 
 ```bash
 # Booted image and deployment
@@ -211,18 +217,19 @@ touch /usr/bin/.test 2>&1 || echo "/usr is not writable (expected)"
 
 ## 9. Adding a New App
 
-Example: add `repos/api/` alongside `repos/hello/`.
+Example: add `repos/myapp/` alongside `repos/hello/` and `repos/worker/`.
 
 ### Step 1: Create app layout
 
 ```
-repos/api/
+repos/myapp/
 ├── main.go
 ├── main_test.go
-├── go.mod
+└── go.mod
+
+bootc/apps/myapp/
 └── rootfs/
-    ├── usr/lib/systemd/system/api.service
-    └── usr/lib/tmpfiles.d/api.conf
+    └── usr/lib/systemd/system/myapp.service
 ```
 
 ### Step 2: Update Containerfile
@@ -230,8 +237,8 @@ repos/api/
 Add COPY + enable lines (the binary is auto-built by `make apps`):
 
 ```dockerfile
-COPY bootc/apps/api/rootfs/ /
-RUN systemctl enable api
+COPY bootc/apps/myapp/rootfs/ /
+RUN systemctl enable myapp
 ```
 
 ### Step 3: Rebuild and test locally
@@ -274,7 +281,7 @@ done
 
 Layer 2 follows the same variable: run `make build BASE_DISTRO=<distro>` for each app image you need. Override `VERSION` / `BASE_IMAGE_VERSION` if you are not using `latest`.
 
-**Optional — validate every base + one app image:** `make audit` runs `make base` for each distro, runs `bootc container lint` on each base image, then `make build` for the default `BASE_DISTRO` (centos-stream9 unless you override) and lints the app image. Use it when you want a full local quality pass, not only “build all bases.”
+**Optional — validate every base + one app image:** `make audit-all` runs `make base` for each distro, runs `bootc container lint` on each base image, then `make build` for the default `BASE_DISTRO` (centos-stream9 unless you override) and lints the app image. Use it when you want a full local quality pass, not only “build all bases.”
 
 **Using podman directly:**
 
@@ -1145,69 +1152,154 @@ podman rm "$ctr"
 
 Three methods are available. Use whichever fits your environment.
 
+#### OVA file name on disk
+
+The `.ova` path you pass to the UI, `govc`, or `ovftool` must exist locally:
+
+| Source | Typical filename |
+|--------|------------------|
+| **Local packaging** (see **OVA build flow** in this section) | `output/ova/bootc-testboot.ova` |
+| **CI / GHCR pull** (**Option B: Pull from GHCR** in this section) | `output/ova/bootc-<distro>-<version>-<arch>.ova` (for example `bootc-centos-stream9-latest-amd64.ova`) |
+
+Use `ls output/ova/*.ova` and pass that exact path — the examples below use `OVA_PATH` as a placeholder.
+
+#### Discovering inventory with `govc` (optional but recommended)
+
+Install [govc](https://github.com/vmware/govmomi/releases) (`go install github.com/vmware/govmomi/govc@latest`). Set **connection** first (always use `https://<vcenter-fqdn>/sdk` for `GOVC_URL`):
+
+```bash
+export GOVC_URL='https://vcenter.example.com/sdk'
+export GOVC_USERNAME='you@sso.domain'
+export GOVC_PASSWORD='...'    # prefer read -s or a secret manager; do not commit secrets
+export GOVC_INSECURE=true     # only if the vCenter TLS cert is not trusted; prefer fixing CA trust
+govc about                    # sanity check
+```
+
+Discover **names** used by the env vars and CLI flags (replace `MyDC` with the name returned by `govc ls /`):
+
+```bash
+govc ls /                              # datacenter name(s), e.g. /MyDC
+govc ls /MyDC/datastore                # → GOVC_DATASTORE (short name, e.g. datastore1)
+govc ls /MyDC/network                  # port groups → pick one for GOVC_NETWORK / NetworkMapping
+govc ls /MyDC/host                     # clusters and/or standalone ESXi hosts
+govc ls /MyDC/vm                       # VM folders (optional GOVC_FOLDER, e.g. /MyDC/vm/TeamFolder)
+govc ls '/MyDC/host/MyCluster/Resources'           # resource pool under a **cluster**
+govc ls '/MyDC/host/esxi01.example.com/Resources' # default pool under a **standalone** ESXi host
+```
+
+**Resource pool path patterns:**
+
+- **Cluster:** `/Datacenter/host/<ClusterName>/Resources`
+- **Standalone ESXi** (host directly under the datacenter): `/Datacenter/host/<ESXi-FQDN>/Resources`
+
+**Datastore:** If you see `The virtual machine is not supported on the target datastore`, try another datastore your compute host can access, or pass an explicit datastore on the import line (`-ds=...`). Pick a datastore used by other VMs on the same host/pod.
+
+**Network:** The OVF in this repo defines a logical network named **`VM Network`**. If your port group has a different name, use **`NetworkMapping`** (see Method 2) so `Name` stays `VM Network` and `Network` is the real port group name from `govc ls /MyDC/network`.
+
 #### Method 1: vSphere Web Client (UI)
 
 1. Log in to vSphere Client (https://your-vcenter/ui)
-2. Navigate to **Hosts and Clusters**
+2. Navigate to **Hosts and Clusters** (or **VMs and Templates** if you deploy into a specific folder first)
 3. Right-click the target host or cluster > **Deploy OVF Template**
-4. **Select an OVF template**: choose "Local file" and browse to the `.ova` file
+4. **Select an OVF template**: choose "Local file" and browse to the `.ova` file (`OVA_PATH`)
 5. **Select a name and folder**: enter a VM name (e.g. `bootc-testboot`)
 6. **Select a compute resource**: pick the target host or resource pool
 7. **Review details**: verify vCPU, RAM, disk size from the OVF
 8. **Select storage**: choose a datastore; thin provisioning is recommended
-9. **Select networks**: map "VM Network" to your port group
+9. **Select networks**: map **"VM Network"** (from the OVF) to your port group
 10. **Ready to complete**: review and click **Finish**
 11. Wait for the deployment task to complete, then right-click the VM > **Power On**
 
+If **Deploy OVF** fails with **disk.vmdk** or **500** while **govc** also fails, the problem is often infrastructure (datastore access, NFC upload, or network path to ESXi) — see the **Troubleshooting** table under Method 2 below.
+
 #### Method 2: govc (open-source CLI)
 
+Set **placement** (either export these or pass flags on the command line):
+
 ```bash
-# Set vSphere connection (add to ~/.bashrc or use env-file)
-export GOVC_URL=https://vcenter.example.com/sdk
-export GOVC_USERNAME=administrator@vsphere.local
-export GOVC_PASSWORD='your-password'
-export GOVC_INSECURE=true    # skip TLS verify for self-signed certs
-export GOVC_DATASTORE=datastore1
-export GOVC_NETWORK="VM Network"
-export GOVC_RESOURCE_POOL=/datacenter/host/cluster/Resources
-
-# Import the OVA
-govc import.ova -name=bootc-testboot output/ova/bootc-testboot.ova
-
-# Power on
-govc vm.power -on bootc-testboot
-
-# Get the VM IP (wait a few seconds for DHCP)
-govc vm.ip bootc-testboot
+export GOVC_DATACENTER='MyDC'    # optional if you use -dc=... on each command
+export GOVC_DATASTORE='datastore1'
+export GOVC_NETWORK='VM Network' # default OVF network name; see NetworkMapping if yours differs
+export GOVC_RESOURCE_POOL='/MyDC/host/MyCluster/Resources'
+# Optional: deploy into a VM folder (inventory path from govc ls /MyDC/vm)
+export GOVC_FOLDER='/MyDC/vm/MyTeam'
 ```
 
-To customize CPU/RAM at import time:
+**Import** (explicit datacenter and datastore are often clearer in scripts):
 
 ```bash
 govc import.ova \
-    -name=bootc-testboot \
-    -options=<(echo '{"DiskProvisioning":"thin","NetworkMapping":[{"Name":"VM Network","Network":"your-portgroup"}]}') \
-    output/ova/bootc-testboot.ova
+  -dc=MyDC \
+  -ds=datastore1 \
+  -name=bootc-testboot \
+  OVA_PATH
+```
 
+If `GOVC_FOLDER` is set, `govc` uses it for the VM location; otherwise add `-folder=...` to match your inventory folder.
+
+```bash
+# Power on
+govc vm.power -on bootc-testboot
+
+# Get the VM IP (wait for DHCP)
+govc vm.ip -wait 60s bootc-testboot
+```
+
+**Customize disk provisioning and map the OVF network** to a real port group (recommended when the port group is not literally named `VM Network`, or to silence OVF warnings about `Connection`):
+
+```bash
+govc import.ova \
+  -dc=MyDC \
+  -ds=datastore1 \
+  -name=bootc-testboot \
+  -options=<(echo '{"DiskProvisioning":"thin","NetworkMapping":[{"Name":"VM Network","Network":"Your-PortGroup-Name"}]}') \
+  OVA_PATH
+```
+
+`Name` must stay **`VM Network`** (that is the label inside [`builder/ova/bootc-testboot.ovf`](../../builder/ova/bootc-testboot.ovf)). `Network` must match the **exact** port group name in vSphere (including spaces).
+
+To generate a full options JSON template from the OVA:
+
+```bash
+govc import.spec OVA_PATH > /tmp/bootc-import.json
+# Edit NetworkMapping / DiskProvisioning as needed, then:
+govc import.ova -dc=MyDC -ds=datastore1 -name=bootc-testboot -options=/tmp/bootc-import.json OVA_PATH
+```
+
+**Adjust CPU/RAM** after import:
+
+```bash
 govc vm.change -vm bootc-testboot -c 4 -m 8192
 govc vm.power -on bootc-testboot
 ```
 
+##### Troubleshooting: govc
+
+| Symptom | What to try |
+|---------|-------------|
+| **`open ... no such file or directory`** | Use the real `OVA_PATH` from `ls output/ova/*.ova` (CI artifacts are not named `bootc-testboot.ova` unless you built locally with that name). |
+| **`The virtual machine is not supported on the target datastore`** | Try another datastore (`-ds=...`); ensure the datastore is visible to the **same** host as `GOVC_RESOURCE_POOL`. |
+| **Warning: Invalid value `VM Network` for element `Connection`** | Use `-options` / `NetworkMapping` so the OVF network maps to an existing port group; see above. |
+| **`500 Internal Server Error` / `Error caused by file disk.vmdk` during upload** | Verify `disk.vmdk` inside `output/ova` is non-empty and the OVA is intact. Ensure the client running `govc` can reach ESXi **NFC** (often **TCP 902** to the host); firewalls or VPN-only vCenter access commonly break large VMDK uploads. Try **Method 1 (UI)** from a machine that can upload, or deploy from a jump host inside the datacenter network. |
+| **VM powers on but has no IP** | Confirm the NIC is connected and the port group has DHCP (or static config in the guest). `govc vm.ip -wait 60s bootc-testboot` |
+
+The OVF defaults to **hardware version `vmx-19`** (vSphere 7.x-era). Older ESXi may require lowering the version in the OVF and rebuilding the OVA — see [`builder/README.md`](../../builder/README.md).
+
 #### Method 3: ovftool (VMware proprietary)
 
 ```bash
-# Deploy to vSphere
+# Deploy to vSphere (replace OVA_PATH and the vi:// URI with your datacenter/host/pool path)
 ovftool \
     --name=bootc-testboot \
     --net:"VM Network"="your-portgroup" \
     --datastore=datastore1 \
     --diskMode=thin \
     --powerOn \
-    output/ova/bootc-testboot.ova \
+    OVA_PATH \
     'vi://administrator@vsphere.local:password@vcenter.example.com/datacenter/host/cluster'
 
 # Deploy to VMware Workstation (local)
-ovftool output/ova/bootc-testboot.ova ~/vmware/bootc-testboot/bootc-testboot.vmx
+ovftool OVA_PATH ~/vmware/bootc-testboot/bootc-testboot.vmx
 ```
 
 ### SSH in and verify
@@ -1269,7 +1361,7 @@ Boot the physical machine from the USB drive. The Anaconda installer automatical
 All deployment targets follow the same two-option pattern:
 
 1. **Option A (local):** `bootc-image-builder --type <format>` with a `builder/<format>/config.toml`
-2. **Option B (CI):** Pull from `ghcr.io/duyhenryer/bootc-testboot-{distro}-{format}:{tag}` and extract using `podman cp`
+2. **Option B (CI):** Pull from `ghcr.io/duyhenryer/bootc-testboot/<distro>/<format>:<tag>` and extract using `podman cp`
 
 For builder configs per format, see [builder/README.md](../../builder/README.md).
 
@@ -1360,7 +1452,7 @@ happens:
 sudo bootc upgrade --download-only
 
 # Phase 2: Apply during maintenance window (triggers reboot)
-sudo bootc upgrade --from-downloaded --apply
+sudo bootc upgrade --apply
 ```
 
 ### Rollback
@@ -1583,7 +1675,7 @@ echo "=== Services ===" && systemctl is-active nginx valkey rabbitmq-server hell
 ### References
 
 - [bootc: Upgrade & rollback](https://bootc-dev.github.io/bootc/man/bootc-upgrade.html)
-- [003-deploying-and-upgrading.md — Operations runbook](003-deploying-and-upgrading.md#part-b--operations-runbook) (canonical operator commands)
+- [003-deploying-and-upgrading.md — Artifacts and bootc-image-builder](003-deploying-and-upgrading.md#part-b--artifacts-and-bootc-image-builder) (canonical operator commands)
 - [003-deploying-and-upgrading.md](003-deploying-and-upgrading.md) (what changes on disk during upgrade)
 
 ## Part E -- Release Scenarios
@@ -1905,6 +1997,39 @@ minsize = "10 GiB"
 
 ---
 
+## Part H -- Post-upgrade and incidents
+
+### H.1 Post-upgrade checklist (operator)
+
+After `bootc upgrade` + reboot:
+
+```bash
+sudo bootc status
+systemctl --failed
+systemctl status testboot-infra.target testboot-apps.target
+curl -sf -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/health
+curl -sf -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8001/health
+journalctl -b -p err --no-pager | tail -50
+```
+
+See also [009-observability-logs.md](009-observability-logs.md) for log paths and [008-healthcheck.md](008-healthcheck.md) for HTTP probes.
+
+### H.2 Incident triage (short)
+
+| Symptom | Check |
+|---------|--------|
+| App up but wrong data | `bootc status`, app logs under `/var/log/bootc-testboot/` |
+| Nothing listens | `systemctl status hello worker`, `ss -tuln`, firewall (`firewall-cmd --list-all`) |
+| Permission / SELinux | `ausearch -m avc -ts recent`, [006-selinux-reference.md](006-selinux-reference.md) |
+| Disk full | `df -h`, logrotate under `/var/log/bootc-testboot/` |
+
+### H.3 SSH and access hygiene (production)
+
+- Prefer **SSH keys**; disable password authentication for `root` in cloud templates.
+- Restrict security groups / NSGs to required ports (see [Containerfile](../../Containerfile) firewall offline rules as a baseline).
+
+---
+
 ## 10. Tips and Checklist
 
 ### Passwordless sudo
@@ -1981,9 +2106,11 @@ df -h /sysroot /var/lib/mongodb /var/log
 | CI / deploy | Pull / deploy disk artifact | [003-deploying-and-upgrading.md](003-deploying-and-upgrading.md) |
 | Ops | Check status | `sudo bootc status` |
 | Ops | Pre-download update | `sudo bootc upgrade --download-only` |
-| Ops | Apply update + reboot | `sudo bootc upgrade --from-downloaded --apply` or `sudo bootc upgrade --apply` |
+| Ops | Apply update + reboot | `sudo bootc upgrade --apply` |
 | Ops | Rollback + reboot | `sudo bootc rollback && sudo systemctl reboot` |
 | Ops | Temp writable /usr | `sudo bootc usr-overlay` |
 | Ops | Check /etc drift | `sudo ostree admin config-diff` |
 | Ops | Update bootloader | `sudo bootupctl update` |
 | Registry | Verify GHCR after CI | [005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md), `make verify-ghcr` |
+| Ops | Manifest / CVE scan | `make manifest`, `make scan-image` |
+| Ops | Full local gate | `make audit-all`, `make audit` |

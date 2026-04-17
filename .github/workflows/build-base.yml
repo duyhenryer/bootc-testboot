@@ -28,9 +28,16 @@ on:
         description: 'Platforms to build (comma-separated); amd64 only for now'
         required: true
         default: 'linux/amd64'
+      base_tag:
+        description: 'Override upstream base image tag (e.g. stream9-20250414 to pin a specific bootc release)'
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
-  REGISTRY: ghcr.io
   IMAGE_ROOT: ghcr.io/${{ github.repository }}
 
 jobs:
@@ -123,7 +130,12 @@ jobs:
           if [ "$VERSION" != "latest" ]; then
             TAGS="$TAGS -t ${REF}:${VERSION}"
           fi
+          BASE_TAG_ARG=""
+          if [ -n "${{ inputs.base_tag }}" ]; then
+            BASE_TAG_ARG="--build-arg BASE_TAG=${{ inputs.base_tag }}"
+          fi
           podman build --platform ${{ matrix.platform }} $TAGS \
+            $BASE_TAG_ARG \
             -f base/${{ steps.path.outputs.path }}/Containerfile .
 
       - name: Bootc version
