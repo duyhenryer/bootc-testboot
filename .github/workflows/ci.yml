@@ -260,6 +260,16 @@ jobs:
       - name: Build Go applications
         run: make apps
 
+      - name: Override SSH root login for CI VM smoke test
+        run: |
+          cat > base/rootfs/etc/ssh/sshd_config.d/00-ci-vm-smoke-test.conf <<'EOF'
+          # Temporary CI-only override for bcvk VM smoke tests.
+          # pull_request runs test the merge ref, where main currently sets
+          # PermitRootLogin no and blocks bcvk's root SSH flow.
+          PermitRootLogin prohibit-password
+          EOF
+          sed -n '1,40p' base/rootfs/etc/ssh/sshd_config.d/00-ci-vm-smoke-test.conf
+
       - name: Build base image (${{ matrix.distro }})
         run: |
           podman build --isolation chroot --platform linux/amd64 \
