@@ -246,9 +246,9 @@ EnvironmentFile=-/var/lib/bootc-testboot/worker/worker.secrets.overrides
 
 ExecStart=/usr/bin/worker
 
-# Health check after start
+# Boot smoke: GET / (200 once the server is listening; deps may still connect)
 ExecStartPost=/usr/bin/env LOG_FILE=/var/log/bootc-testboot/worker/healthcheck.log \
-  /usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8001/health 10
+  /usr/libexec/testboot/healthcheck.sh http://127.0.0.1:8001/ 5 200 30 1
 ```
 
 ### File System Layout
@@ -357,7 +357,7 @@ curl -X POST http://localhost:8001/seed -d '{"count": 10}'
 Included in project-wide smoke testing:
 
 ```bash
-make test-smoke EXPECTED_BINS="hello worker" EXPECTED_SVCS="hello worker nginx"
+make test-smoke
 ```
 
 ---

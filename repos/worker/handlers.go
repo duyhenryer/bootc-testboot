@@ -298,13 +298,3 @@ type seedRequest struct {
 	Parallel       *bool    `json:"parallel"`
 	BatchSize      int      `json:"batch_size"`
 }
-
-func getHealthStatus() map[string]interface{} {
-	return map[string]interface{}{
-		"status":      "ok",
-		"mongodb":     "checking",
-		"rabbitmq":    "checking",
-		"valkey":      "checking",
-		"timestamp":   time.Now().UTC().Format(time.RFC3339),
-	}
-}

@@ -307,6 +307,7 @@ Shared utility scripts and system definitions used by all services and apps.
 | `bootc/libs/common/rootfs/usr/libexec/testboot/gen-tls-cert.sh` | `/usr/libexec/testboot/gen-tls-cert.sh` | Read-only | Self-signed TLS cert generator (CA + server) |
 | `bootc/libs/common/rootfs/usr/lib/sysusers.d/apps.conf` | `/usr/lib/sysusers.d/apps.conf` | Read-only | Creates shared `apps` group for all Go app services |
 | `bootc/libs/common/rootfs/usr/lib/tmpfiles.d/testboot-common.conf` | `/usr/lib/tmpfiles.d/testboot-common.conf` | Read-only | Creates shared `/var` directories at boot |
+| `bootc/libs/common/rootfs/etc/logrotate.d/bootc-testboot` | `/etc/logrotate.d/bootc-testboot` | Read-only | Rotates `/var/log/bootc-testboot/*.log` only; per-app dirs use `hello` / `worker` snippets ([009-observability-logs.md](009-observability-logs.md)) |
 | `bootc/libs/common/rootfs/etc/sysconfig/arptables` | `/etc/sysconfig/arptables` | Mutable | Minimal ARP rules so `arptables.service` is not `NOTCONFIGURED` if enabled; image ships the unit **disabled** by default |
 | `bootc/libs/common/rootfs/usr/lib/systemd/system-preset/99-bootc-testboot.preset` | `/usr/lib/systemd/system-preset/99-bootc-testboot.preset` | Read-only | Preset: `disable` `arptables.service` and `rdisc.service` (cloud-friendly defaults) |
 | `bootc/libs/common/rootfs/usr/lib/systemd/system/testboot-app-setup.service` | `/usr/lib/systemd/system/testboot-app-setup.service` | Read-only | Oneshot: reads infra secrets and writes shared env files for apps (runs once at first boot) |
@@ -379,11 +380,25 @@ Plus a symlink: `/etc/rabbitmq/rabbitmq.conf` -> `/usr/share/rabbitmq/rabbitmq.c
 |-------------|-------------|------|---------|
 | `bootc/apps/hello/rootfs/usr/lib/systemd/system/hello.service` | `/usr/lib/systemd/system/hello.service` | Read-only | systemd unit: three-tier EnvironmentFile pattern; `After=testboot-app-setup.service` |
 | `bootc/apps/hello/rootfs/usr/share/bootc-testboot/hello/hello.env` | `/usr/share/bootc-testboot/hello/hello.env` | Read-only | Tier 1: immutable defaults (`LISTEN_ADDR`, `LOG_LEVEL`, etc.) |
-| `bootc/apps/hello/rootfs/etc/logrotate.d/hello` | `/etc/logrotate.d/hello` | Read-only | Weekly rotate for `/var/log/bootc-testboot/hello/*.log` (`copytruncate`, `su hello hello`) |
+| `bootc/apps/hello/rootfs/etc/logrotate.d/hello` | `/etc/logrotate.d/hello` | Read-only | Daily rotate for `/var/log/bootc-testboot/hello/*.log` (`copytruncate`, `su hello hello`; see [009](009-observability-logs.md)) |
 | `bootc/apps/hello/rootfs/usr/lib/tmpfiles.d/hello.conf` | `/usr/lib/tmpfiles.d/hello.conf` | Read-only | Optional extra tmpfiles; `StateDirectory`/`LogsDirectory` create `/var/lib`/`/var/log` paths |
 | `bootc/apps/hello/rootfs/usr/share/nginx/conf.d/hello.conf` | `/usr/share/nginx/conf.d/hello.conf` | Read-only | nginx vhost reverse proxy config |
 
 The hello binary itself comes from a separate COPY: `COPY output/bin/ /usr/bin/` (built by `make apps` from `repos/hello/`).
+
+### apps/worker
+
+| Source Path | Runtime Path | Zone | Purpose |
+|-------------|-------------|------|---------|
+| `bootc/apps/worker/rootfs/usr/lib/systemd/system/worker.service` | `/usr/lib/systemd/system/worker.service` | Read-only | systemd unit: three-tier EnvironmentFile pattern; connects to MongoDB/RabbitMQ/Valkey |
+| `bootc/apps/worker/rootfs/usr/share/bootc-testboot/worker/worker.env` | `/usr/share/bootc-testboot/worker/worker.env` | Read-only | Tier 1: immutable defaults (`LISTEN_ADDR=:8001`, `WORKER_MODE`, `SEED_*`, etc.) |
+| `bootc/apps/worker/rootfs/usr/lib/systemd/system/worker-healthcheck.service` | `/usr/lib/systemd/system/worker-healthcheck.service` | Read-only | Periodic HTTP healthcheck (oneshot, called by timer) |
+| `bootc/apps/worker/rootfs/usr/lib/systemd/system/worker-healthcheck.timer` | `/usr/lib/systemd/system/worker-healthcheck.timer` | Read-only | Timer: 1min interval, randomized delay |
+| `bootc/apps/worker/rootfs/usr/lib/sysusers.d/worker.conf` | `/usr/lib/sysusers.d/worker.conf` | Read-only | Dedicated `worker` user + member of `apps` group |
+| `bootc/apps/worker/rootfs/usr/lib/tmpfiles.d/worker.conf` | `/usr/lib/tmpfiles.d/worker.conf` | Read-only | Extra `/var` dirs for worker state |
+| `bootc/apps/worker/rootfs/etc/logrotate.d/worker` | `/etc/logrotate.d/worker` | Read-only | Daily rotate for `/var/log/bootc-testboot/worker/*.log` |
+
+The worker binary itself comes from a separate COPY: `COPY output/bin/ /usr/bin/` (built by `make apps` from `repos/worker/`).
 
 ### Three-Tier EnvironmentFile Convention
 
@@ -620,7 +635,7 @@ Web-facing apps behind nginx use ports in the range **8000-8099**. Each app gets
 
 Not all apps need a port — only those serving HTTP behind nginx.
 
-**Validation:** Run `make validate-ports` to check range, uniqueness, and env-nginx consistency. The script scans all `bootc/apps/*/rootfs/` for `LISTEN_ADDR` in env files and `server 127.0.0.1:<port>` in nginx configs, then cross-checks them.
+When adding or changing apps, **manually** keep `LISTEN_ADDR` in each app’s `*.env` aligned with `server 127.0.0.1:<port>` in that app’s nginx `conf.d` snippet (range **8000–8099**, unique per web-facing app).
 
 ---
 
@@ -726,6 +741,29 @@ Published names follow a **path-style** image reference on GitHub Container Regi
 | Disk artifact | `ghcr.io/<owner>/bootc-testboot/<distro>/<format>:latest` (`qcow2`, `ami`, ...) |
 
 Local `make base` / `make build` use the same pattern via `IMAGE_ROOT` in the [Makefile](../../Makefile) (default `ghcr.io/duyhenryer/bootc-testboot`). The application [Containerfile](../../Containerfile) takes `IMAGE_ROOT` and `BASE_DISTRO` so `FROM` resolves to `.../base/<distro>:<tag>`.
+
+### Pinning tags and reproducibility (supply chain)
+
+| knob | Default | Production note |
+|------|---------|-----------------|
+| `BASE_IMAGE_VERSION` | `latest` (Makefile / `podman build --build-arg`) | Pin to a **digest** or immutable tag when reproducing builds: `FROM ...@sha256:...` or `:1.2.3`. |
+| `VERSION` | `latest` for app image tag | CI uses commit-based flows; for releases use semver tags on GHCR (see [005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md)). |
+| OCI metadata | `org.opencontainers.image.revision` = `GIT_SHA` | Set at build time from git; recorded in image labels. |
+
+After building, capture an OCI manifest for audit:
+
+```bash
+make manifest APP_IMAGE_REF=ghcr.io/<owner>/bootc-testboot/centos-stream9 VERSION=latest
+# writes output/image-manifest-*.json
+```
+
+Optional CVE scan (requires [Trivy](https://aquasecurity.github.io/trivy/) installed locally):
+
+```bash
+make scan-image
+```
+
+**Reading Trivy output on bootc images:** Trivy may report `Detected OS family="none"` (limited OS package detection on OSTree layouts). It will still scan **language binaries** (`gobinary`, etc.). You may see many findings under paths like `sysroot/ostree/repo/objects/...` — those are **blobs from the base OS / tooling** (old Go stdlib, container stack), not your app sources under `repos/`. Remediating those usually means **rebuilding when the base distro ships newer RPMs**, not a single `go.mod` change. For **app-layer** issues (e.g. `usr/bin/worker`), fix dependencies in `repos/<app>/go.mod` and rebuild the image. For a narrower report, [`scripts/scan-image-trivy.sh`](../../scripts/scan-image-trivy.sh) supports optional `TRIVY_SKIP_DIRS` (comma-separated paths, each passed as `--skip-dirs` to Trivy).
 
 ---
 

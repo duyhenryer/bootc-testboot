@@ -1,4 +1,5 @@
 .PHONY: base apps build test lint test-smoke test-smoke-run test-integration \
+       test-vm test-vm-upgrade test-vm-ssh \
        audit audit-all manifest scan-image verify-ghcr help clean
 
 # ---------------------------------------------------------------------------
@@ -17,6 +18,9 @@ PODMAN     ?= podman
 # Base distro selection (centos-stream9 | centos-stream10 | fedora-40 | fedora-41)
 BASE_DISTRO ?= centos-stream9
 
+# Override upstream base image tag (e.g. BASE_TAG=stream9-20250414 to pin a specific bootc release)
+BASE_TAG    ?=
+
 # Map BASE_DISTRO to Containerfile path
 BASE_MAP_centos-stream9  = base/centos/stream9/Containerfile
 BASE_MAP_centos-stream10 = base/centos/stream10/Containerfile
@@ -30,13 +34,14 @@ ALL_DISTROS = centos-stream9 centos-stream10 fedora-40 fedora-41
 # Base Image (Layer 1: OS + tuning, build weekly)
 # ---------------------------------------------------------------------------
 
-base: ## Build base image (BASE_DISTRO=centos-stream9|fedora-41|...)
+base: ## Build base image (BASE_DISTRO=centos-stream9|fedora-41|... BASE_TAG= to pin upstream tag)
 	@if [ -z "$(BASE_FILE)" ]; then \
 		echo "ERROR: Unknown BASE_DISTRO=$(BASE_DISTRO)"; \
 		echo "       Valid: centos-stream9, centos-stream10, fedora-40, fedora-41"; \
 		exit 1; \
 	fi
 	$(PODMAN) build --isolation chroot -f $(BASE_FILE) \
+		$(if $(BASE_TAG),--build-arg BASE_TAG=$(BASE_TAG)) \
 		-t $(BASE_IMAGE_REF):$(VERSION) .
 
 # ---------------------------------------------------------------------------
@@ -89,6 +94,19 @@ test-smoke-run: ## Smoke test only: expects image already built (CI uses this)
 
 test-integration: build ## Integration test: run app in read-only mode (simulates production)
 	@./scripts/integration-test.sh "$(PODMAN)" "$(APP_IMAGE_REF):$(VERSION)"
+
+# ---------------------------------------------------------------------------
+# VM Testing (requires bcvk + KVM)
+# ---------------------------------------------------------------------------
+
+test-vm: build ## VM test: boot as real VM, verify all services (requires bcvk + /dev/kvm)
+	@./scripts/vm-test.sh "$(APP_IMAGE_REF):$(VERSION)"
+
+test-vm-upgrade: build ## VM upgrade test: persistent VM + bootc upgrade + reboot (requires bcvk + libvirt)
+	@./scripts/vm-upgrade-test.sh "$(APP_IMAGE_REF):$(VERSION)"
+
+test-vm-ssh: build ## Boot image as VM and SSH in (interactive, auto-cleanup on exit)
+	bcvk ephemeral run-ssh "$(APP_IMAGE_REF):$(VERSION)"
 
 # ---------------------------------------------------------------------------
 # Audit & Validation

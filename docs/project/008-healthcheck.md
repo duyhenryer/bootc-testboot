@@ -8,6 +8,8 @@ Static users **`hello`** and **`worker`** have primary groups of the same name a
 
 **Main app units** ([`hello.service`](../../bootc/apps/hello/rootfs/usr/lib/systemd/system/hello.service), [`worker.service`](../../bootc/apps/worker/rootfs/usr/lib/systemd/system/worker.service)) use `User=` / `Group=` matching the service account. With `User=` set, systemd initializes **supplementary groups from the user database** (including `apps`), so those processes can read shared `EnvironmentFile=` paths. **`hello-healthcheck.service`** / **`worker-healthcheck.service`** use the **same** `User=` / `Group=` so periodic logs match **LogsDirectory=** ownership under `/var/log/bootc-testboot/{hello,worker}/`. They do **not** load `EnvironmentFile=` from `shared/env`—only `curl` + logging—so they do not rely on `apps` for that unit’s job; keeping **`Group=hello`** / **`Group=worker`** (not `Group=apps`) stays aligned with the main service and log layout.
 
+For the **full log layout** and systemd targets, see [009-observability-logs.md](009-observability-logs.md).
+
 ## 1. What the image does today
 
 ### 1.1 Side-by-side
@@ -17,7 +19,7 @@ Static users **`hello`** and **`worker`** have primary groups of the same name a
 | Unit | [`hello.service`](../../bootc/apps/hello/rootfs/usr/lib/systemd/system/hello.service) | [`worker.service`](../../bootc/apps/worker/rootfs/usr/lib/systemd/system/worker.service) |
 | Main process | `/usr/bin/hello` | `/usr/bin/worker` |
 | `Type` | `simple` (long-running) | `simple` (long-running) |
-| Health URL (loopback) | `http://127.0.0.1:8000/health` | `http://127.0.0.1:8001/health` |
+| Health URL (loopback) | `http://127.0.0.1:8000/health` | Boot `ExecStartPost`: `http://127.0.0.1:8001/` (liveness). Readiness: `http://127.0.0.1:8001/health` (503 until Mongo+RabbitMQ+Valkey are up). |
 | App log file | `/var/log/bootc-testboot/hello/hello.log` | `/var/log/bootc-testboot/worker/worker.log` |
 | Health log file (boot `ExecStartPost`) | `/var/log/bootc-testboot/hello/healthcheck.log` | `/var/log/bootc-testboot/worker/healthcheck.log` |
 | Periodic health log (timer) | `/var/log/bootc-testboot/hello/healthcheck-periodic.log` | `/var/log/bootc-testboot/worker/healthcheck-periodic.log` |
@@ -35,8 +37,17 @@ So:
 
 ### 1.3 Shared script: `healthcheck.sh`
 
-- Uses `curl` once, optional timeout (e.g. `10`), expects HTTP `200` by default.
+- Uses `curl` with optional per-attempt timeout, expected status (default `200`), and optional **retries** (`max_attempts`, `retry_delay_sec`) for startup races.
 - When `LOG_FILE` is set (as in the units), messages go through [`log.sh`](../../bootc/libs/common/rootfs/usr/libexec/testboot/log.sh) and append to that file **and** stderr (journal).
+
+### 1.3.1 Interpreting HTTP `000` vs `503` (worker)
+
+| Logged status | Meaning | What to check |
+|---------------|---------|----------------|
+| **HTTP 000** | `curl` could not connect (connection refused, no listener). The process is not accepting `127.0.0.1:8001` yet or `worker.service` is not running. | `systemctl status worker`, `/var/log/bootc-testboot/worker/worker.log`, `journalctl -u worker`. |
+| **HTTP 503** | TCP succeeded; [`/health`](../../repos/worker/handlers.go) reports **degraded** until Mongo, RabbitMQ, and Valkey all pass the in-process checks. | Infra env files, shared secrets, service logs for Mongo/RabbitMQ/Valkey. |
+
+Boot `ExecStartPost` on worker probes **`/`** (liveness). Periodic **`worker-healthcheck.service`** probes **`/health`** (readiness) with the same retry shape as boot: `healthcheck.sh … 5 200 30 1` (per-attempt timeout 5s, expect 200, up to 30 attempts, 1s between attempts).
 
 ### 1.4 If the smoke check fails
 
@@ -56,7 +67,7 @@ Typical pattern on long-lived VMs:
 2. A **new empty** `healthcheck.log` is created.
 3. **`ExecStartPost` has not run again** since rotation (service did not restart), so nothing new is appended → current file stays **0 bytes** until the next start/restart.
 
-This repository does **not** ship a `logrotate.d` snippet for these paths under `bootc/`; rotation may come from **OS defaults**, cloud images, or operator config. See also [004-testing-guide.md](004-testing-guide.md) for journal vs files and logrotate notes.
+Rotation for these paths is defined under `bootc/` — see [009-observability-logs.md](009-observability-logs.md) (`bootc-testboot`, `hello`, `worker` snippets). See also [004-testing-guide.md](004-testing-guide.md) for journal vs files and logrotate notes.
 
 **tmpfiles.d** ensures log/state directories exist, e.g.:
 
