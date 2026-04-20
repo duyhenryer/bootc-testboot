@@ -262,13 +262,13 @@ jobs:
 
       - name: Build base image (${{ matrix.distro }})
         run: |
-          podman build --platform linux/amd64 \
+          podman build --isolation chroot --platform linux/amd64 \
             -f base/${{ matrix.containerfile_path }}/Containerfile \
             -t ${{ env.IMAGE_ROOT }}/base/${{ matrix.distro }}:latest .
 
       - name: Build app image (${{ matrix.distro }})
         run: |
-          podman build --platform linux/amd64 \
+          podman build --isolation chroot --platform linux/amd64 \
             --build-arg IMAGE_ROOT=${{ env.IMAGE_ROOT }} \
             --build-arg BASE_DISTRO=${{ matrix.distro }} \
             --build-arg BASE_IMAGE_VERSION=latest \

@@ -117,6 +117,24 @@ if [ $SSH_OK -eq 0 ]; then
     echo "--- VM journal: sshd lines ---"
     podman exec "${VM_NAME}" grep -iE 'ssh' /run/journal.log 2>/dev/null | tail -20 || echo "(no sshd journal lines)"
     echo ""
+    echo "--- Effective sshd config ---"
+    podman exec "${VM_NAME}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        -o ConnectTimeout=5 -i /run/tmproot/var/lib/bcvk/ssh -p 2222 root@127.0.0.1 \
+        'sshd -T | egrep "permitrootlogin|pubkeyauthentication|passwordauthentication|kbdinteractiveauthentication|authenticationmethods"' \
+        2>/dev/null || echo "(could not read effective sshd config via guest ssh)"
+    echo ""
+    echo "--- Guest ssh config files ---"
+    podman exec "${VM_NAME}" sh -lc 'for f in /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*; do [ -f "$f" ] && { echo "### $f"; sed -n "1,160p" "$f"; echo; }; done' \
+        2>/dev/null || echo "(could not read guest ssh config files)"
+    echo ""
+    echo "--- cloud-init status ---"
+    podman exec "${VM_NAME}" sh -lc 'cloud-init status 2>/dev/null || true; systemctl status cloud-init cloud-config cloud-final --no-pager -l 2>/dev/null || true' \
+        2>/dev/null || echo "(cloud-init not available)"
+    echo ""
+    echo "--- Guest auth and root account state ---"
+    podman exec "${VM_NAME}" sh -lc 'passwd -S root 2>/dev/null || true; getent passwd root 2>/dev/null || true; ls -ld /root /root/.ssh 2>/dev/null || true' \
+        2>/dev/null || echo "(could not inspect root account state)"
+    echo ""
     echo "--- Direct SSH attempt from inside container ---"
     podman exec "${VM_NAME}" ssh -v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
         -o ConnectTimeout=5 -o BatchMode=yes \
