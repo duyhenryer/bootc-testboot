@@ -1,0 +1,179 @@
+# Vendored from github.com/mongodb/mongodb-selinux@18181652362a46fd4511a56f20c4055712deb252
+policy_module(mongodb, 2.0.0)
+
+########################################
+#
+# Declarations
+#
+
+type mongod_t;
+type mongod_exec_t;
+init_daemon_domain(mongod_t, mongod_exec_t)
+
+type mongod_log_t;
+logging_log_file(mongod_log_t)
+
+type mongod_runtime_t alias mongod_var_run_t;
+require { attribute file_type, non_security_file_type, non_auth_file_type, pidfile, systemd_unit_file_type; }
+typeattribute mongod_runtime_t file_type, non_security_file_type, non_auth_file_type, pidfile;
+
+type mongod_var_lib_t;
+files_type(mongod_var_lib_t)
+
+type mongod_unit_file_t;
+typeattribute mongod_unit_file_t file_type, non_security_file_type, non_auth_file_type, systemd_unit_file_type;
+
+# port is defined by refpolicy as:
+# network_port(mongod, tcp,27017-27019,s0, tcp, 28017-28019,s0)
+
+########################################
+#
+# Local policy
+#
+
+require {
+    type tmp_t;
+    class netlink_route_socket { read write bind create getattr nlmsg_read };
+    class udp_socket { read write create connect getattr bind getopt setopt };
+    class tcp_socket { read write connect accept bind create getattr getopt listen setopt shutdown };
+    class sock_file { create setattr unlink };
+}
+
+allow mongod_t self:process { setsched signal execmem };
+allow mongod_t self:fifo_file rw_fifo_file_perms;
+allow mongod_t self:unix_stream_socket { connectto accept listen };
+allow mongod_t self:netlink_route_socket { read write bind create getattr nlmsg_read };
+allow mongod_t self:tcp_socket { read write create connect bind getattr getopt setopt accept listen shutdown };
+allow mongod_t self:udp_socket { read write create connect bind getattr getopt setopt };
+
+miscfiles_read_generic_certs(mongod_t)
+
+manage_dirs_pattern(mongod_t, mongod_log_t, mongod_log_t)
+append_files_pattern(mongod_t, mongod_log_t, mongod_log_t)
+create_files_pattern(mongod_t, mongod_log_t, mongod_log_t)
+rename_files_pattern(mongod_t, mongod_log_t, mongod_log_t)
+setattr_files_pattern(mongod_t, mongod_log_t, mongod_log_t)
+logging_log_filetrans(mongod_t, mongod_log_t, dir)
+
+manage_dirs_pattern(mongod_t, mongod_var_lib_t, mongod_var_lib_t)
+manage_files_pattern(mongod_t, mongod_var_lib_t, mongod_var_lib_t)
+files_var_lib_filetrans(mongod_t, mongod_var_lib_t, dir)
+
+manage_dirs_pattern(mongod_t, mongod_runtime_t, mongod_runtime_t)
+manage_files_pattern(mongod_t, mongod_runtime_t, mongod_runtime_t)
+files_pid_filetrans(mongod_t, mongod_runtime_t, { dir file sock_file })
+
+require { type var_t, var_run_t; }
+allow mongod_t var_t:dir { getattr search open };
+allow mongod_t var_run_t:lnk_file { getattr read };
+allow mongod_t var_run_t:dir { open read getattr lock search ioctl add_name remove_name write };
+type_transition mongod_t var_run_t:dir mongod_runtime_t;
+
+# this is required to create mongodb-XXXXX.sock files
+files_rw_generic_tmp_dir(mongod_t)
+fs_manage_tmpfs_sockets(mongod_t)
+allow mongod_t tmp_t:sock_file { create setattr unlink };
+
+kernel_read_system_state(mongod_t)
+kernel_read_network_state(mongod_t)
+kernel_read_fs_sysctls(mongod_t)
+kernel_read_net_sysctls(mongod_t)
+kernel_read_vm_sysctls(mongod_t)
+logging_send_syslog_msg(mongod_t)
+sysnet_read_config(mongod_t)
+
+corecmd_exec_bin(mongod_t)
+corecmd_exec_shell(mongod_t)
+
+corenet_all_recvfrom_netlabel(mongod_t)
+corenet_all_recvfrom_unlabeled(mongod_t)
+corenet_tcp_connect_mongod_port(mongod_t)
+corenet_tcp_bind_mongod_port(mongod_t)
+corenet_tcp_sendrecv_generic_if(mongod_t)
+corenet_tcp_sendrecv_generic_node(mongod_t)
+corenet_udp_bind_mongod_port(mongod_t)
+corenet_tcp_connect_ocsp_port(mongod_t)
+corenet_sendrecv_ocsp_client_packets(mongod_t)
+corenet_tcp_connect_http_port(mongod_t)
+corenet_tcp_sendrecv_http_port(mongod_t)
+corenet_tcp_bind_generic_node(mongod_t)
+
+dev_read_sysfs(mongod_t)
+dev_read_urand(mongod_t)
+
+files_read_etc_files(mongod_t)
+fs_getattr_all_fs(mongod_t)
+miscfiles_read_localization(mongod_t)
+
+# cgroup memory
+fs_search_cgroup_dirs(mongod_t)
+fs_read_cgroup_files(mongod_t)
+
+# /proc/net
+kernel_list_proc(mongod_t)
+kernel_read_proc_symlinks(mongod_t)
+
+## <desc>
+## <p>
+## Allow mongodb to access SNMP service
+## </p>
+## </desc>
+gen_tunable(mongod_can_connect_snmp, false)
+tunable_policy(`mongod_can_connect_snmp',`
+    corenet_udp_bind_snmp_port(mongod_t)
+    corenet_tcp_bind_snmp_port(mongod_t)
+    snmp_stream_connect(mongod_t)
+    snmp_tcp_connect(mongod_t)
+    snmp_read_snmp_var_lib_files(mongod_t)
+    snmp_read_snmp_var_lib_dirs(mongod_t)
+')
+
+## <desc>
+## <p>
+## Allow mongodb to connect to LDAP servers
+## </p>
+## </desc>
+gen_tunable(mongod_can_connect_ldap, false)
+tunable_policy(`mongod_can_connect_ldap',`
+    corenet_tcp_sendrecv_ldap_port(mongod_t)
+    corenet_tcp_connect_ldap_port(mongod_t)
+    corenet_sendrecv_ldap_client_packets(mongod_t)
+')
+
+## <desc>
+## <p>
+## Allow mongodb to use Kerberos
+## </p>
+## </desc>
+gen_tunable(mongod_can_use_kerberos, false)
+tunable_policy(`mongod_can_use_kerberos',`
+    gen_require(`
+        type krb5_conf_t, krb5kdc_conf_t;
+        type krb5_host_rcache_t;
+        class dir write;
+    ')
+
+    files_search_etc(mongod_t)
+    read_files_pattern(mongod_t, krb5_conf_t, krb5_conf_t)
+    getattr_files_pattern(mongod_t, krb5_conf_t, krb5_conf_t)
+    list_dirs_pattern(mongod_t, krb5_conf_t, krb5_conf_t)
+    dontaudit mongod_t krb5_conf_t:file write;
+    dontaudit mongod_t krb5kdc_conf_t:dir list_dir_perms;
+    dontaudit mongod_t krb5kdc_conf_t:file rw_file_perms;
+    dontaudit mongod_t self:process setfscreate;
+    selinux_dontaudit_validate_context(mongod_t)
+
+    kerberos_read_config(mongod_t)
+    kerberos_read_keytab(mongod_t)
+
+    corenet_tcp_connect_kerberos_port(mongod_t)
+    corenet_sendrecv_kerberos_client_packets(mongod_t)
+    corenet_tcp_sendrecv_kerberos_port(mongod_t)
+    corenet_udp_sendrecv_kerberos_port(mongod_t)
+    corenet_tcp_bind_generic_node(mongod_t)
+    corenet_udp_bind_generic_node(mongod_t)
+    seutil_read_file_contexts(mongod_t)
+
+    # this is needed to create files in /var/tmp
+    files_manage_generic_tmp_files(mongod_t)
+')
