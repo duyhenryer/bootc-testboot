@@ -13,21 +13,18 @@ ARG IMAGE_ROOT=ghcr.io/duyhenryer/bootc-testboot
 ARG BASE_DISTRO=centos-stream9
 ARG BASE_IMAGE_VERSION=latest
 ARG GIT_SHA=unknown
-# Official MongoDB SELinux module — compile in a throwaway stage so selinux-policy-devel
-# does not leave /var/lib/selinux + sepolgen debris in the final image (bootc container lint).
-# https://github.com/mongodb/mongodb-selinux
-ARG MONGODB_SELINUX_SHA=18181652362a46fd4511a56f20c4055712deb252
-
+# Official MongoDB SELinux module (vendored under bootc/services/mongodb/selinux/)
+# Compiled in a throwaway stage so selinux-policy-devel does not leave
+# /var/lib/selinux + sepolgen debris in the final image (bootc container lint).
 FROM ${IMAGE_ROOT}/base/${BASE_DISTRO}:${BASE_IMAGE_VERSION} AS mongodb-selinux-builder
-ARG MONGODB_SELINUX_SHA
-RUN dnf install -y git make checkpolicy selinux-policy-devel && \
+RUN dnf install -y make checkpolicy selinux-policy-devel && \
     dnf clean all && \
     rm -rf /var/cache/{dnf,ldconfig} /var/log/{dnf*,hawkey*,rhsm} /var/lib/dnf
-RUN git clone https://github.com/mongodb/mongodb-selinux.git /tmp/mongodb-selinux && \
-    cd /tmp/mongodb-selinux && git checkout "${MONGODB_SELINUX_SHA}" && \
-    make -j"$(nproc)" && \
-    install -D -m 0644 build/targeted/mongodb.pp /mongodb.pp && \
-    rm -rf /tmp/mongodb-selinux
+COPY bootc/services/mongodb/selinux/mongodb.te /tmp/mongo/mongodb.te
+COPY bootc/services/mongodb/selinux/mongodb.fc /tmp/mongo/mongodb.fc
+RUN make -C /tmp/mongo -f /usr/share/selinux/devel/Makefile mongodb.pp && \
+    install -D -m 0644 /tmp/mongo/mongodb.pp /mongodb.pp && \
+    rm -rf /tmp/mongo
 # Supplemental local modules: rules not covered by base or upstream policy.
 COPY bootc/services/mongodb/selinux/mongodb_ftdc_local.te /tmp/mongodb_ftdc_local.te
 COPY bootc/libs/common/selinux/bootc_testboot_local.te /tmp/bootc_testboot_local.te
