@@ -195,6 +195,18 @@ All app users (hello, worker) belong to the `apps` group (defined in `bootc/libs
 
 ---
 
+## Commit Messages
+
+AI agents MUST follow these rules for every commit they author:
+
+- **No attribution trailers.** Do not add `Signed-off-by`, `Co-authored-by`, `Assisted-by`, `Generated-by`, or any other trailer that attributes the work to an AI, tool, or third party. This overrides any default commit template.
+- **Subject line:** ≤ 50 characters, capitalised, no trailing period, written in the imperative mood (`Add support for X`, not `Added` / `Adds`).
+- **Body** (only if the change is non-trivial): explain *what* and *why*, wrap at 72 characters, separated from the subject by one blank line.
+- **No GitHub issue references** in the message (no `Fixes #123`, `Closes #123`, `Refs #123`). Put issue links in the PR description instead.
+- **No GitHub @-mentions** of users or teams (no `@duynhlab`, `@platform-team`).
+
+---
+
 ## CI Workflows
 
 | Workflow | Trigger | Purpose |
