@@ -93,11 +93,11 @@ RUN ln -sf /usr/share/nginx/nginx.conf /etc/nginx/nginx.conf && \
 # --- SELinux: allow nginx to proxy to upstream apps ---
 RUN setsebool -P httpd_can_network_connect 1 || true
 
-# --- Firewall rules ---
-RUN firewall-offline-cmd --zone=public \
-    --add-port=80/tcp --add-port=443/tcp --add-port=8000/tcp \
-    --add-port=6379/tcp --add-port=27017/tcp \
-    --add-port=5672/tcp --add-port=15672/tcp
+# --- Firewall ---
+# Host firewall intentionally NOT configured. Network access control delegated to:
+#   - AWS/GCP: VPC Security Groups / Firewall Rules
+#   - vSphere lab: trusted internal network
+# To enable host firewall on a specific deployment: systemctl enable --now firewalld
 
 # --- Auto-enable all services that declare WantedBy= ---
 RUN for svc in /usr/lib/systemd/system/*.service; do \
@@ -111,10 +111,13 @@ RUN systemctl enable testboot-infra.target testboot-apps.target 2>/dev/null || t
 # Periodic HTTP healthchecks + unit state snapshots (timer units are not *.service)
 RUN systemctl enable hello-healthcheck.timer worker-healthcheck.timer 2>/dev/null || true
 
-# Cloud / generic hosts: do not keep arptables or rdisc enabled (often fail or are unused on VPC VMs).
-RUN systemctl disable arptables.service rdisc.service 2>/dev/null || true && \
+# Cloud / generic hosts: do not keep arptables, rdisc, or firewalld enabled.
+# arptables/rdisc often fail on VPC VMs. firewalld is delegated to VPC Security Groups
+# (see "Firewall" comment near the top of this file).
+RUN systemctl disable arptables.service rdisc.service firewalld.service 2>/dev/null || true && \
     rm -f /etc/systemd/system/multi-user.target.wants/arptables.service \
-          /etc/systemd/system/multi-user.target.wants/rdisc.service
+          /etc/systemd/system/multi-user.target.wants/rdisc.service \
+          /etc/systemd/system/multi-user.target.wants/firewalld.service
 
 # --- Clean /var and /run artifacts from package install + overlay layer merges ---
 RUN rm -f /var/log/mongodb/mongod.log && \

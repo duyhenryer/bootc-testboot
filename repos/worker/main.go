@@ -94,7 +94,7 @@ func main() {
 		slog.Error("failed to connect to rabbitmq", "err", err)
 	}
 
-	if err := valkeyMgr.Connect(ctx, cfg.ValkeyAddr, cfg.ValkeyDB); err != nil {
+	if err := valkeyMgr.Connect(ctx, cfg.ValkeyAddr, cfg.ValkeyDB, cfg.ValkeyPassword); err != nil {
 		slog.Error("failed to connect to valkey", "err", err)
 	}
 

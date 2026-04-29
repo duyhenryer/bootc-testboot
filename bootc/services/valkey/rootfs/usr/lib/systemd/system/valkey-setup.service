@@ -1,0 +1,13 @@
+[Unit]
+Description=Valkey credential setup
+Before=valkey.service
+ConditionPathExists=!/var/lib/valkey/.setup-done
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=LOG_FILE=/var/log/valkey/valkey-setup.log
+ExecStart=/usr/libexec/testboot/valkey-setup.sh
+
+[Install]
+WantedBy=multi-user.target

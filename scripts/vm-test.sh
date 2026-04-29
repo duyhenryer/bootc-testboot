@@ -191,13 +191,20 @@ fi
 # ---------------------------------------------------------------------------
 echo "--- Checking systemd services ---"
 
-for svc in hello worker mongod valkey rabbitmq-server nginx firewalld sshd; do
+for svc in hello worker mongod valkey rabbitmq-server nginx sshd; do
     if vm_ssh "systemctl is-active ${svc}" | grep -q "^active$"; then
         check_pass "${svc} is active"
     else
         check_fail "${svc} is NOT active"
     fi
 done
+
+# Cloud-first: firewalld must NOT be enabled (VPC handles network ACL).
+if vm_ssh "systemctl is-enabled firewalld" | grep -q "^enabled$"; then
+    check_fail "firewalld is enabled — should be disabled (VPC handles network ACL)"
+else
+    check_pass "firewalld is not enabled (cloud-first posture)"
+fi
 
 if vm_ssh "systemctl is-active chronyd" | grep -q "^active$"; then
     check_pass "chronyd is active"
@@ -263,18 +270,46 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test: firewalld ports
+# Test: Valkey AUTH (requirepass enforced)
 # ---------------------------------------------------------------------------
-echo "--- Checking firewalld ports ---"
+echo "--- Checking Valkey AUTH ---"
 
-PORTS=$(vm_ssh 'firewall-cmd --list-ports 2>/dev/null' || echo "")
-for port in 22/tcp 80/tcp 443/tcp 8000/tcp 5672/tcp 6379/tcp 15672/tcp 27017/tcp; do
-    if echo "${PORTS}" | grep -q "${port}"; then
-        check_pass "port ${port} open"
-    else
-        check_fail "port ${port} NOT in firewalld"
-    fi
-done
+VALKEY_PW=$(vm_ssh 'cat /var/lib/valkey/.password 2>/dev/null')
+if [ -n "${VALKEY_PW}" ]; then
+    check_pass "Valkey password file exists"
+else
+    check_fail "Valkey password file missing"
+fi
+
+# Without password → must reject
+if vm_ssh 'valkey-cli PING 2>&1' | grep -qi "NOAUTH\|authentication required"; then
+    check_pass "Valkey rejects unauthenticated PING"
+else
+    check_fail "Valkey did NOT require auth (security regression)"
+fi
+
+# With password → must respond PONG
+if [ -n "${VALKEY_PW}" ] && vm_ssh "valkey-cli -a '${VALKEY_PW}' PING 2>/dev/null" | grep -q "^PONG$"; then
+    check_pass "Valkey responds PONG with correct password"
+else
+    check_fail "Valkey AUTH with stored password failed"
+fi
+
+# ---------------------------------------------------------------------------
+# Test: bind addresses (cross-VM access ready, rely on VPC for filtering)
+# ---------------------------------------------------------------------------
+echo "--- Checking bind addresses ---"
+
+if vm_ssh 'ss -tlnp | grep -E "(127.0.0.1|0.0.0.0|\\*):27017"' | grep -q "0.0.0.0:27017\\|\\*:27017"; then
+    check_pass "MongoDB binds 0.0.0.0:27017"
+else
+    check_fail "MongoDB does NOT bind 0.0.0.0:27017"
+fi
+if vm_ssh 'ss -tlnp | grep -E "(127.0.0.1|0.0.0.0|\\*):6379"' | grep -q "0.0.0.0:6379\\|\\*:6379"; then
+    check_pass "Valkey binds 0.0.0.0:6379"
+else
+    check_fail "Valkey does NOT bind 0.0.0.0:6379"
+fi
 
 # ---------------------------------------------------------------------------
 # Test: bootc status
