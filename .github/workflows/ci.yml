@@ -65,11 +65,28 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install build tools
-        run: dnf install -y checkpolicy
+        run: dnf install -y checkpolicy make selinux-policy-devel
       - name: Compile all .te modules
         run: |
           FAILED=0
-          for te in $(find bootc/ -name '*.te' -type f); do
+          # Vendored upstream policies use refpolicy macros (policy_module),
+          # build them via the refpolicy devel Makefile.
+          for te in bootc/services/mongodb/selinux/mongodb.te; do
+            [ -f "$te" ] || continue
+            dir="$(dirname "$te")"
+            base="$(basename "$te" .te)"
+            echo "==> Compiling (refpolicy) $te"
+            if make -C "$dir" -f /usr/share/selinux/devel/Makefile "${base}.pp" >/dev/null; then
+              echo "    OK"
+              rm -f "${dir}/${base}.pp" "${dir}/${base}.mod" "${dir}/${base}.mod.fc"
+              rm -rf "${dir}/tmp"
+            else
+              echo "    FAILED"
+              FAILED=1
+            fi
+          done
+          # Local supplemental modules: raw checkmodule format.
+          for te in $(find bootc/ -name '*_local.te' -type f); do
             MOD="${te%.te}.mod"
             echo "==> Compiling $te"
             if checkmodule -M -m -o "$MOD" "$te"; then
