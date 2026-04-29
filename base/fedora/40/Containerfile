@@ -16,11 +16,9 @@ RUN dnf install -y \
 COPY base/rootfs/ /
 RUN chmod 0440 /etc/sudoers.d/wheel-nopasswd
 
-# --- Firewall base rules ---
-RUN firewall-offline-cmd --zone=public --add-port=22/tcp
-
 # --- Enable base services ---
-RUN systemctl enable cloud-init sshd firewalld chronyd systemd-resolved NetworkManager
+# firewalld package stays installed but is NOT enabled — see Containerfile (root) for rationale.
+RUN systemctl enable cloud-init sshd chronyd systemd-resolved NetworkManager
 
 # --- Clean /var and /run artifacts from package install ---
 # /var/lib/.ssh-host-keys-migration is a %ghost file from openssh-server; the

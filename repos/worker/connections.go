@@ -247,12 +247,13 @@ type ValkeyManager struct {
 	client *redis.Client
 }
 
-func (v *ValkeyManager) Connect(ctx context.Context, addr string, db int) error {
-	slog.Debug("valkey connecting", "addr", addr, "db", db)
+func (v *ValkeyManager) Connect(ctx context.Context, addr string, db int, password string) error {
+	slog.Debug("valkey connecting", "addr", addr, "db", db, "auth", password != "")
 
 	client := redis.NewClient(&redis.Options{
-		Addr: addr,
-		DB:   db,
+		Addr:     addr,
+		DB:       db,
+		Password: password,
 	})
 
 	if err := client.Ping(ctx).Err(); err != nil {

@@ -21,6 +21,7 @@ type Config struct {
 	RabbitMQQueue      string
 	ValkeyAddr         string
 	ValkeyDB           int
+	ValkeyPassword     string
 	SeedHTTPTimeoutSec int
 	SeedBatchSize      int
 	SeedTargetSizeMB   int
@@ -43,6 +44,7 @@ func loadConfig() (*Config, error) {
 		RabbitMQQueue:      getEnv("RABBITMQ_QUEUE", "worker_queue"),
 		ValkeyAddr:         getEnv("VALKEY_ADDR", "localhost:6379"),
 		ValkeyDB:           getEnvInt("VALKEY_DB", 0),
+		ValkeyPassword:     getEnv("VALKEY_PASSWORD", ""),
 		SeedHTTPTimeoutSec: getEnvInt("SEED_HTTP_TIMEOUT_SEC", 1800),
 		SeedBatchSize:      getEnvInt("SEED_BATCH_SIZE", 1000),
 		SeedTargetSizeMB:   getEnvInt("SEED_TARGET_SIZE_MB", 0),

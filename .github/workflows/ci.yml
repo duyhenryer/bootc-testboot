@@ -162,17 +162,17 @@ jobs:
         run: |
           podman build --platform linux/amd64 \
             -f base/${{ matrix.containerfile_path }}/Containerfile \
-            -t ${{ env.IMAGE_ROOT }}/base/${{ matrix.distro }}:latest .
+            -t ${{ env.IMAGE_ROOT }}/base/${{ matrix.distro }}:pr-check .
 
       - name: Lint base image
-        run: podman run --rm ${{ env.IMAGE_ROOT }}/base/${{ matrix.distro }}:latest bootc container lint --fatal-warnings || exit 1
+        run: podman run --rm ${{ env.IMAGE_ROOT }}/base/${{ matrix.distro }}:pr-check bootc container lint --fatal-warnings || exit 1
 
       - name: Build app image (${{ matrix.distro }})
         run: |
-          podman build --platform linux/amd64 \
+          podman build --platform linux/amd64 --pull=never \
             --build-arg IMAGE_ROOT=${{ env.IMAGE_ROOT }} \
             --build-arg BASE_DISTRO=${{ matrix.distro }} \
-            --build-arg BASE_IMAGE_VERSION=latest \
+            --build-arg BASE_IMAGE_VERSION=pr-check \
             --build-arg GIT_SHA=${{ github.sha }} \
             -t ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:pr-check \
             -f Containerfile .
@@ -293,14 +293,14 @@ jobs:
         run: |
           podman build --isolation chroot --platform linux/amd64 \
             -f base/${{ matrix.containerfile_path }}/Containerfile \
-            -t ${{ env.IMAGE_ROOT }}/base/${{ matrix.distro }}:latest .
+            -t ${{ env.IMAGE_ROOT }}/base/${{ matrix.distro }}:pr-check .
 
       - name: Build app image (${{ matrix.distro }})
         run: |
-          podman build --isolation chroot --platform linux/amd64 \
+          podman build --isolation chroot --platform linux/amd64 --pull=never \
             --build-arg IMAGE_ROOT=${{ env.IMAGE_ROOT }} \
             --build-arg BASE_DISTRO=${{ matrix.distro }} \
-            --build-arg BASE_IMAGE_VERSION=latest \
+            --build-arg BASE_IMAGE_VERSION=pr-check \
             --build-arg GIT_SHA=${{ github.sha }} \
             -t ${{ env.IMAGE_ROOT }}/${{ matrix.distro }}:latest \
             -f Containerfile .

@@ -17,13 +17,11 @@ RUN dnf install -y epel-release \
 COPY base/rootfs/ /
 RUN chmod 0440 /etc/sudoers.d/wheel-nopasswd
 
-# --- Firewall base rules ---
-RUN firewall-offline-cmd --zone=public --add-port=22/tcp
-
 # --- Enable base services ---
 # CentOS/RHEL: DNS is managed by NetworkManager's internal DNS plugin,
 # not systemd-resolved (which is not shipped in the minimal bootc image).
-RUN systemctl enable cloud-init sshd firewalld chronyd NetworkManager
+# firewalld package stays installed but is NOT enabled — see Containerfile (root) for rationale.
+RUN systemctl enable cloud-init sshd chronyd NetworkManager
 
 # --- Clean /var and /run artifacts from package install ---
 # /var/lib/.ssh-host-keys-migration is a %ghost file from openssh-server; the

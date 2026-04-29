@@ -2,3 +2,8 @@
 # if auto-enabled without extra host networking policy.
 disable arptables.service
 disable rdisc.service
+
+# Cloud-first posture: VPC Security Groups handle network ACL.
+# Firewalld package stays installed; operators can `systemctl enable --now firewalld`
+# per-instance for on-prem deployments without perimeter network filtering.
+disable firewalld.service
