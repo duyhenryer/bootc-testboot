@@ -13,9 +13,8 @@ Use this map to pick the right doc and avoid duplicating content across files. *
 | Verify GHCR after CI, post-deploy VM audit checklist | [005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md) |
 | SELinux: MongoDB FTDC denials, build-time policy, case studies | [006-selinux-reference.md](006-selinux-reference.md) |
 | SELinux: MongoDB-specific policy notes (redirects to 006) | [007-selinux-mongodb.md](007-selinux-mongodb.md) |
-| Hello/Worker `ExecStartPost` healthcheck, logs, `systemd.timer` options | [008-healthcheck.md](008-healthcheck.md) |
-| systemd targets (`testboot-infra` / `testboot-apps`), log paths, logrotate | [009-observability-logs.md](009-observability-logs.md) |
-| Worker app: data seeding, infrastructure health checks, MongoDB/RabbitMQ/Valkey status | [010-worker-app.md](010-worker-app.md) |
+| Services runtime: systemd targets, identity, healthcheck pattern, log layout, logrotate | [008-services-runtime.md](008-services-runtime.md) |
+| Per-app reference: `hello` and `worker` (endpoints, env tiers, troubleshooting, seeding) | [009-apps-reference.md](009-apps-reference.md) |
 
 ## Canonical topic -> doc
 
@@ -32,13 +31,12 @@ Use this map to pick the right doc and avoid duplicating content across files. *
 | **Post-deploy checks / troubleshooting** | [005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md) + [004-testing-guide.md](004-testing-guide.md) | 005 has the VM checklist; 004 has test-level troubleshooting. |
 | **SELinux policy** | [006-selinux-reference.md](006-selinux-reference.md) | Problem history, methods, case studies, AVC reading guide. |
 | **SELinux / MongoDB** (image-specific) | [007-selinux-mongodb.md](007-selinux-mongodb.md) | Redirects to 006 (consolidated). |
-| **Hello/Worker healthcheck** (`ExecStartPost`, periodic options) | [008-healthcheck.md](008-healthcheck.md) | Smoke vs timer; empty logs after rotate; matrix; identity. |
-| **Targets, log contract, logrotate** | [009-observability-logs.md](009-observability-logs.md) | Infra/apps ordering; `/var/log/bootc-testboot/`; not metrics. |
-| **Worker app** (data seeding, health checks) | [010-worker-app.md](010-worker-app.md) | Infrastructure verification, MongoDB/RabbitMQ/Valkey status endpoints. |
+| **Services runtime contract** (targets, identity, healthcheck, logs, logrotate) | [008-services-runtime.md](008-services-runtime.md) | Cross-cutting concerns shared by all long-running services. |
+| **Per-app reference** (hello + worker endpoints, env, troubleshooting) | [009-apps-reference.md](009-apps-reference.md) | App-specific endpoints, env tiers, seeding, troubleshooting. |
 
 ## Numbering
 
-Files use `00N-` prefixes for sort order (this folder includes **[001](001-architecture-overview.md)** through **[010](010-worker-app.md)**). There is no required reading sequence; [001](001-architecture-overview.md) is the usual starting point.
+Files use `00N-` prefixes for sort order (this folder includes **[001](001-architecture-overview.md)** through **[009](009-apps-reference.md)**). There is no required reading sequence; [001](001-architecture-overview.md) is the usual starting point.
 
 ## bootc Learning Docs
 

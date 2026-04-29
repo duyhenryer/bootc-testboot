@@ -1,7 +1,7 @@
 # Top-level logs under /var/log/bootc-testboot only (e.g. app-setup.log).
 # Subdirectory logs (hello/*.log, worker/*.log) are in /etc/logrotate.d/hello and
 # /etc/logrotate.d/worker with per-service su — do not duplicate paths here.
-# See docs/project/009-observability-logs.md
+# See docs/project/008-services-runtime.md
 #
 # logrotate.service is triggered daily by logrotate.timer; "daily" below means
 # eligible for rotation each run (subject to state). Tune rotate / size for disk.

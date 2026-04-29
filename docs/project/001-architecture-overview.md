@@ -265,20 +265,20 @@ On reboot, the bootloader atomically switches to the staged deployment. Rollback
 flowchart LR
     subgraph Repo["Repository"]
         A[repos/hello/]
-        B[repos/newapp/]
+        B[repos/worker/]
     end
 
     subgraph Image["Container Image"]
         A --> BIN["/usr/bin/hello"]
         A --> SVC["hello.service"]
         A --> TMP["hello-tmpfiles.conf"]
-        B --> BIN2["/usr/bin/newapp"]
-        B --> SVC2["newapp.service"]
+        B --> BIN2["/usr/bin/worker"]
+        B --> SVC2["worker.service"]
     end
 
     subgraph Runtime["Runtime"]
         SVC --> NGINX[nginx]
-        SVC2 --> NGINX
+        SVC2 --> INFRA["mongodb / rabbitmq / valkey"]
     end
 ```
 
@@ -288,10 +288,12 @@ flowchart LR
 
 ### Adding a New App
 
-1. Create `repos/newapp/` with `main.go`, `go.mod`
-2. Create `bootc/apps/newapp/rootfs/` mimicking the OS structure.
-3. Add `RUN systemctl enable newapp`
+1. Create `repos/<newapp>/` with `main.go`, `go.mod`
+2. Create `bootc/apps/<newapp>/rootfs/` mimicking the OS structure (systemd unit, sysusers.d, tmpfiles.d, env defaults).
+3. Auto-enable picks up any `.service` with `WantedBy=` in the Containerfile loop.
 4. `make build` (auto-discovers all `repos/*/` dirs for compiling bins)
+
+See [AGENTS.md "Adding a New App"](../../AGENTS.md) for the full checklist.
 
 All apps share the same OS image; scaling = more `bootc/apps/` dirs + COPY lines.
 
@@ -307,13 +309,13 @@ flowchart TB
         CI[cloud-init]
     end
 
-    subgraph Production["Full Stack"]
+    subgraph Production["Full Stack (current)"]
         N2["nginx (reverse proxy)"]
         V[valkey]
         M[rabbitmq]
-        A1[app-api]
-        A2[app-worker]
-        A3[app-web]
+        DB[mongodb]
+        A1[hello]
+        A2[worker]
     end
 
     subgraph Targets["Deployment Targets"]
@@ -338,7 +340,7 @@ flowchart TB
 | **nginx** | Already present; add more vhosts/config |
 | **valkey** | `RUN dnf install valkey` + `valkey.service` |
 | **rabbitmq** | `RUN dnf install rabbitmq-server` + systemd unit |
-| **Many apps** | `repos/hello/`, `repos/worker/`, `repos/newapp/`; same Containerfile pattern |
+| **Many apps** | Drop `repos/<name>/` + `bootc/apps/<name>/`; same Containerfile pattern auto-enables |
 
 ### Deployment Targets
 
