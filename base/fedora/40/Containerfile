@@ -23,7 +23,10 @@ RUN firewall-offline-cmd --zone=public --add-port=22/tcp
 RUN systemctl enable cloud-init sshd firewalld chronyd systemd-resolved NetworkManager
 
 # --- Clean /var and /run artifacts from package install ---
+# /var/lib/.ssh-host-keys-migration is a %ghost file from openssh-server; the
+# ssh-host-keys-migration.service touches it on first boot — must not be baked.
 RUN rm -rf /var/lib/dnf /var/lib/rhsm \
+    /var/lib/.ssh-host-keys-migration \
     /var/log/{dnf*,hawkey*,rhsm} /var/log/sa \
     /var/cache/{dnf,ldconfig,libdnf5} \
     /var/roothome/buildinfo \

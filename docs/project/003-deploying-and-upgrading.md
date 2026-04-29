@@ -244,7 +244,7 @@ RUN systemctl enable myapp
 ### Step 3: Rebuild and test locally
 
 ```bash
-make build    # auto-discovers repos/api/, builds binary, assembles OS image
+make build    # auto-discovers repos/myapp/, builds binary, assembles OS image
 make lint     # verify bootc compliance
 ```
 
@@ -1690,7 +1690,7 @@ Everything in `/usr` is atomically swapped to the new image version:
 
 | What | Example | Behavior |
 |------|---------|----------|
-| App binaries | `/usr/bin/hello`, `/usr/bin/app-api` | Old removed, new installed |
+| App binaries | `/usr/bin/hello`, `/usr/bin/worker` | Old removed, new installed |
 | Configs | `/usr/share/nginx/nginx.conf` | Replaced with new version |
 | systemd units | `/usr/lib/systemd/system/hello.service` | Replaced with new version |
 | tmpfiles.d | `/usr/lib/tmpfiles.d/mongodb.conf` | Replaced with new version |
@@ -1789,12 +1789,12 @@ What happens on customer upgrade:
 
 This is the one scenario that requires application-level handling, because `/var/lib/mongodb/` is never touched by the upgrade. The database schema must be migrated by your app.
 
-**Recommended pattern:** Use `ExecStartPre=` in the app's systemd unit:
+**Recommended pattern:** Use `ExecStartPre=` in the app's systemd unit (illustrative — `worker` does not currently ship a `--migrate` flag):
 
 ```ini
 [Service]
-ExecStartPre=/usr/bin/app-api --migrate
-ExecStart=/usr/bin/app-api --serve
+ExecStartPre=/usr/bin/worker --migrate
+ExecStart=/usr/bin/worker
 ```
 
 The `--migrate` command should:
@@ -2012,7 +2012,7 @@ curl -sf -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8001/health
 journalctl -b -p err --no-pager | tail -50
 ```
 
-See also [009-observability-logs.md](009-observability-logs.md) for log paths and [008-healthcheck.md](008-healthcheck.md) for HTTP probes.
+See also [008-services-runtime.md](008-services-runtime.md) for log paths, healthcheck behavior, and systemd targets.
 
 ### H.2 Incident triage (short)
 

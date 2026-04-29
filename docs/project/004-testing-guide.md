@@ -970,8 +970,8 @@ bootc images are designed to boot with systemd as PID 1. When you run them with 
 ### `systemctl is-enabled` shows "disabled"
 
 The service file exists but is not enabled. Check:
-1. Does the service file have `[Install]` section with `WantedBy=multi-user.target`?
-2. Did the Containerfile auto-enable loop run? Check with: `ls -la /etc/systemd/system/multi-user.target.wants/`
+1. Does the service file have `[Install]` section with `WantedBy=` set? Apps in this project use `WantedBy=testboot-apps.target`; infra services use `WantedBy=testboot-infra.target` or `multi-user.target`.
+2. Did the Containerfile auto-enable loop run? Check with: `ls -la /etc/systemd/system/testboot-apps.target.wants/ /etc/systemd/system/multi-user.target.wants/`
 
 ### `curl` fails in integration test
 
