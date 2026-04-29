@@ -35,7 +35,11 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Don't cancel: cancel-in-progress with a reusable workflow_call child
+  # (trigger-bootc → build-bootc.yml) triggers a GitHub-detected deadlock when
+  # a second push arrives mid-run. Base builds are rare (weekly cron + base/**
+  # path), queueing two runs is acceptable.
+  cancel-in-progress: false
 
 env:
   IMAGE_ROOT: ghcr.io/${{ github.repository }}
