@@ -236,9 +236,11 @@ jobs:
           key: cargo-vm-tools-${{ runner.os }}-v1
 
       # --- Install bcvk + virtiofsd ---
-      # virtiofsd from apt is 1.10.x (too old for bcvk 0.13+, needs >= 1.12.0).
-      # Build from crates.io. bcvk has no deb package — install from git.
+      # virtiofsd from apt is 1.10.x (too old for bcvk 0.13+, needs >= 1.12.0) — build from crates.io.
+      # bcvk: prefer prebuilt release tarball (fast); fall back to cargo install from git.
       - name: Install bcvk and virtiofsd
+        env:
+          BCVK_VERSION: v0.14.0
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq qemu-system-x86 libseccomp-dev libcap-ng-dev
@@ -247,7 +249,17 @@ jobs:
             sudo cp ~/.cargo/bin/virtiofsd /usr/libexec/virtiofsd
           fi
           if ! command -v bcvk &>/dev/null; then
-            cargo install --locked --git https://github.com/bootc-dev/bcvk bcvk
+            tarball="bcvk-x86_64-unknown-linux-gnu.tar.gz"
+            url="https://github.com/bootc-dev/bcvk/releases/download/${BCVK_VERSION}/${tarball}"
+            tmp="$(mktemp -d)"
+            if curl -fsSL --retry 3 -o "${tmp}/${tarball}" "${url}"; then
+              tar -xzf "${tmp}/${tarball}" -C "${tmp}"
+              sudo install -m 0755 "${tmp}/bcvk-x86_64-unknown-linux-gnu" /usr/local/bin/bcvk
+              rm -rf "${tmp}"
+            else
+              echo "Prebuilt bcvk ${BCVK_VERSION} unavailable, falling back to cargo install" >&2
+              cargo install --locked --git https://github.com/bootc-dev/bcvk bcvk
+            fi
           fi
           echo "bcvk=$(bcvk --version 2>/dev/null || echo 'not found')"
           echo "virtiofsd=$(virtiofsd --version 2>/dev/null || echo 'not found')"
