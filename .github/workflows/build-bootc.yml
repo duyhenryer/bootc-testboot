@@ -32,7 +32,13 @@ on:
         default: 'linux/amd64'
 
 concurrency:
-  group: ${{ github.event_name == 'workflow_call' && format('build-bootc-reusable-{0}', github.ref) || format('{0}-{1}', github.workflow, github.ref) }}
+  # NOTE: in a reusable workflow_call invocation, github.workflow and
+  # github.event_name inherit the CALLER's values (e.g. "Build base images" /
+  # "push"), which previously caused this group to collide with the caller's
+  # concurrency group and deadlock the run. Use a fixed, workflow-specific
+  # prefix so direct triggers and reusable invocations stay isolated from
+  # other workflows while still cancelling in-progress runs of THIS workflow.
+  group: build-bootc-${{ github.ref }}
   cancel-in-progress: true
 
 env:
