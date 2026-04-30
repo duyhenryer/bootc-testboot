@@ -67,7 +67,7 @@ flowchart TB
 
 | Target | When to use | What it does |
 |--------|-------------|--------------|
-| `make audit` | Before push / quick local gate | Runs `manifest` + `scan-image`. **No** image build; run `make build && make test-smoke` separately. |
+| `make audit` | Before push / quick local gate | Runs `manifest` + `scan-image`. **No** image build; run `make test-all` separately. |
 | `make audit-all` | Full local CI parity | Builds **all** base images + app image on disk, runs `bootc container lint --fatal-warnings` on each. **No** `podman pull` from GHCR. |
 | `make verify-ghcr` | After CI published to GHCR | Runs [`scripts/verify-ghcr-packages.sh`](../../scripts/verify-ghcr-packages.sh): `skopeo inspect` and `podman pull` of **remote** tags, validates artifact paths. Run on a dev machine with free disk; see [005-ghcr-audit-and-post-deploy.md](005-ghcr-audit-and-post-deploy.md). Use `VERIFY_SKIP_PULL=1` for metadata-only. |
 

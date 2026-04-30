@@ -8,16 +8,13 @@ You no longer need to push to GHCR and deploy a VM just to check if your image w
 
 - [Test summary (all TCs)](#test-summary-all-tcs)
 - [The problem](#the-problem)
-- [Four levels of testing](#four-levels-of-testing)
-- [Level 1: Smoke test (TC-06)](#level-1-smoke-test-tc-06)
-- [Level 2: Integration test (TC-07)](#level-2-integration-test-tc-07)
-- [Level 3: Full VM boot (QEMU)](#level-3-full-vm-boot-qemu)
-- [Level 4: bcvk VM test (automated)](#level-4-bcvk-vm-test-automated)
+- [Two levels of testing](#two-levels-of-testing)
+- [Level 1: Full VM boot (QEMU)](#level-1-full-vm-boot-qemu)
+- [Level 2: bcvk VM test (automated)](#level-2-bcvk-vm-test-automated)
 - [Testing cheat sheet](#testing-cheat-sheet)
 - [Customizing the checks](#customizing-the-checks)
 - [CI integration](#ci-integration)
 - [Registry: unit tests and build (TC-01 through TC-05)](#registry-unit-tests-and-build-tc-01-through-tc-05)
-- [Registry: smoke and integration reference (TC-06, TC-07)](#registry-smoke-and-integration-reference-tc-06-tc-07)
 - [Registry: deep exec audit (TC-08a through TC-08h)](#registry-deep-exec-audit-tc-08a-through-tc-08h)
 - [Registry: project structure (TC-09)](#registry-project-structure-tc-09)
 - [Registry: lint (TC-10, TC-10b)](#registry-lint-tc-10-tc-10b)
@@ -35,8 +32,6 @@ You no longer need to push to GHCR and deploy a VM just to check if your image w
 | TC-03 | Build | Verify binary properties | — | Manual | Manual |
 | TC-04 | Build | Build base image | — | `make base` | Automated |
 | TC-05 | Build | Build app image | — | `make build` | Automated |
-| TC-06 | Smoke | Smoke test suite | 1 | `make test-smoke` | Automated |
-| TC-07 | Integration | Integration test suite | 2 | `make test-integration` | Automated |
 | TC-08a | Audit | Immutable symlinks | — | Manual | Needs automation |
 | TC-08b | Audit | Binary and shared lib permissions | — | Manual | Needs automation |
 | TC-08c | Audit | systemd unit files and enablement | — | Manual | Needs automation |
@@ -51,10 +46,10 @@ You no longer need to push to GHCR and deploy a VM just to check if your image w
 | TC-11 | Docs | Documentation cross-references | — | Manual | Needs automation |
 | TC-12 | Registry | Post-publish GHCR verification | — | `make verify-ghcr` (or `VERIFY_SKIP_PULL=1` for metadata-only) | Automated |
 
-| TC-13 | VM | bcvk ephemeral VM boot | 4 | `make test-vm` | Automated |
-| TC-14 | VM | bcvk upgrade test | 4 | `make test-vm-upgrade` | Automated |
+| TC-13 | VM | bcvk ephemeral VM boot | 2 | `make test-vm` | Automated |
+| TC-14 | VM | bcvk upgrade test | 2 | `make test-vm-upgrade` | Automated |
 
-**Total: 22 test cases** (10 automated, 5 manual-only, 7 candidates for automation). **Level 3** (full QEMU boot) is documented below for manual verification. **Level 4** (bcvk) automates the full VM lifecycle; see [Level 4: bcvk VM test (automated)](#level-4-bcvk-vm-test-automated).
+**Total: 20 test cases** (10 automated, 5 manual-only, 7 candidates for automation). **Level 1** (full QEMU boot) is documented below for manual verification. **Level 2** (bcvk) automates the full VM lifecycle end-to-end on every PR.
 
 ---
 
@@ -70,145 +65,18 @@ Each cycle takes 10-20 minutes and costs money. Most issues (missing binary, wro
 
 ---
 
-## Four levels of testing
+## Two levels of testing
 
 ```
-Level 1: Smoke Test     (30 seconds, no VM, catches 80% of issues)
-Level 2: Integration    (1 minute, no VM, simulates read-only /usr)
-Level 3: Full VM Boot   (5-10 minutes, requires qemu, catches everything)
-Level 4: bcvk VM Test   (2-8 minutes, requires bcvk + KVM, automated boot-to-verify)
+Level 1: Full VM Boot   (5-10 minutes, requires qemu, manual verification)
+Level 2: bcvk VM Test   (2-8 minutes, requires bcvk + KVM, automated end-to-end)
 ```
 
-Start with Level 1. Only go to Level 3 if you need to test the full boot sequence (cloud-init, multi-service interaction, networking).
+Level 2 is the canonical local + CI gate. Level 1 stays documented for manual cloud-init or boot-loader investigations.
 
 ---
 
-## Level 1: Smoke test (TC-06)
-
-**What it checks:**
-- Expected binaries exist in `/usr/bin/` (`hello`, `worker`)
-- Expected systemd units and timers are enabled (apps, nginx, infra services, `testboot-*` targets, healthcheck timers)
-- Immutable configs and `logrotate.d` snippets exist
-- `bootc container lint --fatal-warnings` passes
-
-| Sub-check | What | Pass criteria |
-|-----------|------|---------------|
-| Binaries | `/usr/bin/hello`, `/usr/bin/worker` executable | `test -x` succeeds |
-| systemd | `hello`, `worker`, `nginx`, `mongod`, `valkey`, `rabbitmq-server`, `testboot-infra.target`, `testboot-apps.target`, healthcheck timers enabled | `systemctl is-enabled` returns "enabled" |
-| Configs | `/etc/logrotate.d/bootc-testboot`, nginx under `/usr/share/nginx/` | `test -f` succeeds |
-| bootc lint | `bootc container lint --fatal-warnings` | Exit code 0 |
-
-**How to run:**
-
-```bash
-make test-smoke
-```
-
-**What you see (success):**
-
-```
-==> Smoke testing ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest
---- Checking binaries ---
-  OK: /usr/bin/hello
-  OK: /usr/bin/worker
---- Checking systemd units (enabled) ---
-  OK: hello enabled
-  OK: worker enabled
-  OK: nginx enabled
-  OK: mongod enabled
-  OK: valkey enabled
-  OK: rabbitmq-server enabled
-  OK: testboot-infra.target enabled
-  OK: testboot-apps.target enabled
-  OK: hello-healthcheck.timer enabled
-  OK: worker-healthcheck.timer enabled
---- Checking unit files on disk ---
-  OK: logrotate.d/bootc-testboot
---- Checking immutable configs ---
-  OK: /usr/share/nginx/nginx.conf
-  OK: /usr/share/nginx/conf.d/hello.conf
---- Running bootc lint ---
-ALL SMOKE TESTS PASSED
-```
-
-**What you see (failure):**
-
-```
---- Checking binaries ---
-  FAIL: /usr/bin/hello missing
---- Checking systemd units ---
-  FAIL: hello not enabled
-SMOKE TESTS FAILED
-```
-
-**How it works under the hood:**
-
-```bash
-./scripts/smoke-test.sh podman <image>
-# same as: make test-smoke-run   # after make build
-```
-
-The image is a bootc container, which means it has `bash`, `systemctl`, and `bootc` inside. [`scripts/smoke-test.sh`](../../scripts/smoke-test.sh) runs `podman run` and checks binaries, enabled units, configs, and lint—edit that script when you add apps or units.
-
-**When to use:** After every `make build`. This is your first line of defense.
-
----
-
-## Level 2: Integration test (TC-07)
-
-**What it checks:**
-- App starts correctly with read-only `/usr` (simulates production)
-- `tmpfiles.d` creates the correct `/var` directories
-- App responds to HTTP requests
-
-| Sub-check | What | Pass criteria |
-|-----------|------|---------------|
-| tmpfiles.d | `/var/log/nginx`, `/var/lib/bootc-testboot` after `systemd-tmpfiles --create` | Directories exist |
-| App health | `hello` responds to `/health` | HTTP response contains expected body |
-
-**Flags used:** `--read-only`, `--tmpfs /var`, `--tmpfs /run`, `--tmpfs /tmp` (see **How it works under the hood** below).
-
-**How to run:**
-
-```bash
-make test-integration
-```
-
-**What you see (success):**
-
-```
-==> Integration testing ghcr.io/duyhenryer/bootc-testboot/centos-stream9:latest (read-only /usr)
---- Verifying tmpfiles.d creates /var dirs ---
-  OK: /var/log/nginx
-  OK: /var/lib/bootc-testboot
---- Starting hello service directly ---
-  OK: hello /health responded
-ALL INTEGRATION TESTS PASSED
-```
-
-**How it works under the hood:**
-
-```bash
-podman run --rm \
-  --read-only \                    # /usr is read-only, like production
-  --tmpfs /var:rw,nosuid,nodev \   # /var is writable, like production
-  --tmpfs /run:rw,nosuid,nodev \   # /run is writable (needed for PID files)
-  --tmpfs /tmp:rw,nosuid,nodev \
-  <image> bash -c '
-    systemd-tmpfiles --create      # create /var dirs from tmpfiles.d
-    /usr/bin/hello &               # start the app
-    sleep 1
-    curl -sf http://127.0.0.1:8000/health  # check it responds
-  '
-```
-
-The `--read-only` flag makes `/usr` read-only, just like it would be on a real booted system. If your app tries to write to `/usr`, it will fail here instead of on the customer's machine.
-
-**When to use:** When you change app code, configs, or add new services. Catches issues that smoke tests miss (e.g., app crashes on startup, wrong port).
-
----
-
-## Level 3: Full VM boot (QEMU)
+## Level 1: Full VM boot (QEMU)
 
 **What it checks:**
 - Full systemd boot sequence
@@ -301,9 +169,9 @@ touch /usr/test-write 2>&1 || echo "Good: /usr is read-only"
 
 ---
 
-## Level 4: bcvk VM test (automated)
+## Level 2: bcvk VM test (automated)
 
-Level 3 (QEMU) requires building a disk image first and manual verification. **Level 4** uses [bcvk](https://github.com/bootc-dev/bcvk) to boot the OCI container image directly as a VM — no disk image build step, fully automated, and scripted pass/fail assertions.
+Level 1 (QEMU) requires building a disk image first and manual verification. **Level 2** uses [bcvk](https://github.com/bootc-dev/bcvk) to boot the OCI container image directly as a VM — no disk image build step, fully automated, and scripted pass/fail assertions.
 
 For comprehensive bcvk documentation (modes, flags, internals), see [docs/bootc/015-bcvk-virtualization-kit.md](../bootc/015-bcvk-virtualization-kit.md).
 
@@ -362,7 +230,7 @@ Host: container rootfs → virtiofsd (FUSE server) → /dev/vhost-user → QEMU 
 
 **`virtiofsd`** is the userspace daemon that serves the host filesystem into the VM via the VHOST-USER protocol. Without it, QEMU cannot mount the container rootfs and the VM will fail to boot with a kernel panic (`VFS: Unable to mount root fs`).
 
-This is different from Level 3 (QEMU + QCOW2) where the filesystem is embedded in the disk image itself — no filesystem sharing daemon is needed.
+This is different from Level 1 (QEMU + QCOW2) where the filesystem is embedded in the disk image itself — no filesystem sharing daemon is needed.
 
 ### Prerequisites
 
@@ -549,7 +417,7 @@ bcvk ephemeral mode has several differences from a real deployed VM. These are b
 
 **Why `degraded` is accepted:** In ephemeral mode, `bootloader-update.service` always fails because there is no real disk or bootloader to update. This is harmless — it means the system state is `degraded` instead of `running`. The test script accepts both states as success.
 
-**Why SELinux is disabled:** bcvk ephemeral mode passes `selinux=0` on the kernel command line. This is a bcvk design choice for ephemeral/testing scenarios. To test SELinux enforcement, use Level 3 (QCOW2 + QEMU) or deploy to a real VM.
+**Why SELinux is disabled:** bcvk ephemeral mode passes `selinux=0` on the kernel command line. This is a bcvk design choice for ephemeral/testing scenarios. To test SELinux enforcement, use Level 1 (QCOW2 + QEMU) or deploy to a real VM.
 
 ### How the test script handles bcvk SSH
 
@@ -571,7 +439,7 @@ bcvk wraps SSH inside `podman exec`, which introduces two quirks that the test s
 make test-vm-ssh   # Boot VM and drop into SSH session, auto-cleanup on exit
 ```
 
-**When to use:** When you need to manually inspect a running VM — debug service failures, check logs, verify network. This is the bcvk equivalent of Level 3's manual QEMU verification, but without the disk image build step.
+**When to use:** When you need to manually inspect a running VM — debug service failures, check logs, verify network. This is the bcvk equivalent of Level 1's manual QEMU verification, but without the disk image build step.
 
 **Useful commands once inside the VM:**
 
@@ -603,7 +471,7 @@ firewall-cmd --list-ports
 # podman logs <container-name>
 ```
 
-### Troubleshooting Level 4
+### Troubleshooting Level 2
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
@@ -624,33 +492,34 @@ firewall-cmd --list-ports
 
 | What you changed | Minimum test level | Command |
 |------------------|--------------------|---------|
-| Go app code | Level 1 | `make test-smoke` |
-| systemd unit file | Level 1 | `make test-smoke` |
-| nginx/valkey/rabbitmq config | Level 1 | `make test-smoke` |
-| New app binary added | Level 2 | `make test-integration` |
-| Containerfile changed | Level 2 | `make test-integration` |
-| Service ordering / boot chain | Level 4 | `make test-vm` |
-| cloud-init config | Level 3 | QEMU boot |
-| Firewall rules | Level 4 | `make test-vm` |
-| OS upgrade / rollback | Level 4 | `make test-vm-upgrade` |
-| Full release to customer | Level 4 | `make test-vm` + `make test-vm-upgrade` |
+| Go app code | Level 2 | `make test-vm` |
+| systemd unit file | Level 2 | `make test-vm` |
+| nginx/valkey/rabbitmq config | Level 2 | `make test-vm` |
+| New app binary added | Level 2 | `make test-vm` |
+| Containerfile changed | Level 2 | `make test-vm` |
+| Service ordering / boot chain | Level 2 | `make test-vm` |
+| cloud-init config | Level 1 | QEMU boot |
+| Firewall rules | Level 2 | `make test-vm` |
+| OS upgrade / rollback | Level 2 | `make test-vm-upgrade` |
+| Full release to customer | Level 2 | `make test-all` + `make test-vm-upgrade` |
 
 ---
 
 ## Customizing the checks
 
-Smoke expectations live in [`scripts/smoke-test.sh`](../../scripts/smoke-test.sh) (loops for binaries, enabled units/targets/timers, nginx paths, `bootc container lint --fatal-warnings`). The root `Makefile` target **`test-smoke-run`** invokes that script; there are no `EXPECTED_*` Makefile variables.
+VM checks live in [`scripts/vm-test.sh`](../../scripts/vm-test.sh) (service-active loops, target checks, healthcheck timers, HTTP endpoints, SELinux probe, Valkey AUTH, bind-address checks, `bootc status`). Edit that script to add a new app or service expectation. There are no `EXPECTED_*` Makefile variables.
 
 ```bash
-make test-smoke          # build + smoke
-make test-smoke-run      # smoke only (image must already exist)
+make test-vm             # build + boot + verify (default)
+make test-all            # Go unit + bootc lint + test-vm
+make test-vm-upgrade     # build + persistent VM + bootc upgrade + reboot
 ```
 
 ---
 
 ## CI integration
 
-The CI pipeline (`ci.yml`) `pr-check` job already runs strict lint and **`make test-smoke-run`** (after `podman build` and tagging the image) for each matrix distro.
+The CI pipeline (`ci.yml`) `test-vm` job builds the base + app image, runs `bootc container lint --fatal-warnings` on both, boots the image via `bcvk` and runs [`scripts/vm-test.sh`](../../scripts/vm-test.sh) for every distro in the matrix.
 
 ---
 
@@ -709,15 +578,6 @@ output/bin/hello: ELF 64-bit LSB executable, x86-64, version 1 (SYSV),
 - **What it tests:** Application image builds on top of base, copies binaries, configs, and enables services
 - **Expected:** Image tagged as `<registry>/bootc-testboot/<distro>:latest`
 
----
-
-## Registry: smoke and integration reference (TC-06, TC-07)
-
-**Procedures, sample output, and customization:** [Level 1: Smoke test (TC-06)](#level-1-smoke-test-tc-06) and [Level 2: Integration test (TC-07)](#level-2-integration-test-tc-07).
-
-**Commands:** `make test-smoke` (TC-06), `make test-integration` (TC-07). To add apps, extend [`scripts/smoke-test.sh`](../../scripts/smoke-test.sh) as in [Customizing the checks](#customizing-the-checks).
-
----
 
 ## Registry: deep exec audit (TC-08a through TC-08h)
 
@@ -985,7 +845,7 @@ Make sure you are using the UEFI firmware (`-bios /usr/share/OVMF/OVMF_CODE.fd`)
 
 ## Future test plan
 
-The following tests should be added as the project scales. **Level 4 (bcvk)** now automates the full VM boot and upgrade lifecycle — see [Level 4: bcvk VM test (automated)](#level-4-bcvk-vm-test-automated). The items below are **beyond** what bcvk currently covers.
+The following tests should be added as the project scales. **Level 2 (bcvk)** now automates the full VM boot and upgrade lifecycle — see [Level 2: bcvk VM test (automated)](#level-2-bcvk-vm-test-automated). The items below are **beyond** what bcvk currently covers.
 
 ### Short-term (next sprint)
 
@@ -993,7 +853,7 @@ The following tests should be added as the project scales. **Level 4 (bcvk)** no
 |------|------|------|----------|
 | Automate TC-08a through TC-08h | Shell script | Makefile `test-audit` target | High |
 | Nginx reverse proxy e2e | Integration | `podman run` + `curl` through nginx | High |
-| Multi-app smoke test | Smoke | Extend [`scripts/smoke-test.sh`](../../scripts/smoke-test.sh) | Medium |
+| Multi-app boot probe | VM | Extend [`scripts/vm-test.sh`](../../scripts/vm-test.sh) | Medium |
 | Go test coverage report | Unit | `go test -coverprofile` | Medium |
 
 ### Medium-term (next quarter)

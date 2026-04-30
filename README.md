@@ -58,7 +58,7 @@ make build BASE_DISTRO=centos-stream9
 # 4. Lint the image
 make lint
 
-# 5. Manifest + Trivy (optional); image smoke is: make build && make test-smoke
+# 5. Manifest + Trivy (optional); full local gate is: make test-all
 make audit
 ```
 
@@ -95,7 +95,7 @@ repos/
     main.go, go.mod, main_test.go
 Containerfile              Layer 2: application image
 scripts/verify-ghcr-packages.sh  Post-publish GHCR check (also: make verify-ghcr)
-Makefile                   Run `make help` — base, build, audit, verify-ghcr, test-smoke, lint, …
+Makefile                   Run `make help` — base, build, audit, verify-ghcr, test-vm, lint, …
 ```
 
 ## Adding a New App
@@ -106,7 +106,7 @@ Makefile                   Run `make help` — base, build, audit, verify-ghcr, 
 4. Add tmpfiles if needed: `bootc/apps/myapp/rootfs/usr/lib/tmpfiles.d/myapp.conf`
 5. If web-facing, add nginx vhost: `bootc/apps/myapp/rootfs/usr/share/nginx/conf.d/myapp.conf` (immutable)
 6. `make build` -- auto-discovers all `repos/*/` and `bootc/apps/*/`, auto-enables all services
-7. `make test-smoke` -- verify everything is in place before deploying
+7. `make test-vm` -- boot the image as a real VM (bcvk + KVM) and verify all services
 
 ## CI Architecture (Distribution Model)
 

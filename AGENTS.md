@@ -17,9 +17,7 @@ make apps                               # Build all Go binaries to output/bin/
 make build BASE_DISTRO=centos-stream9  # Build app image (Layer 2, depends on apps)
 make test                               # Run Go tests for all repos/*/
 make lint                               # bootc container lint --fatal-warnings
-make test-smoke                         # Build + smoke test (binaries, units, configs, lint)
-make test-smoke-run                     # Smoke test only (expects image already built)
-make test-integration                   # Read-only container integration test
+make test-all                            # Go unit + bootc lint + VM boot test (requires bcvk + /dev/kvm)
 make test-vm                            # VM smoke test (requires bcvk + /dev/kvm)
 make test-vm-upgrade                    # VM upgrade test (requires bcvk + libvirt)
 make test-vm-ssh                        # Interactive VM SSH (requires bcvk + /dev/kvm)
@@ -90,7 +88,7 @@ repos/                         Go application source code
   worker/                      Backend worker (:8001) — MongoDB/RabbitMQ/Valkey client
 
 builder/                       Disk image build configs (qcow2, ami, vmdk, ova, raw, iso)
-scripts/                       CI/local test scripts (smoke-test.sh, integration-test.sh, etc.)
+scripts/                       CI/local test scripts (vm-test.sh, vm-upgrade-test.sh, etc.)
 Containerfile                  Root Containerfile for Layer 2 app image
 Makefile                       All build/test/audit commands
 ```
@@ -170,7 +168,7 @@ The `mongodb-init` service creates the admin user using MongoDB's localhost exce
 
 ### Smoke Test Coverage
 
-When adding a new app/service, update `scripts/smoke-test.sh` to check:
+When adding a new app/service, update `scripts/vm-test.sh` to check:
 - Binary exists in `/usr/bin/<name>`
 - systemd unit is enabled
 - Any new config files exist
@@ -244,9 +242,9 @@ AI agents MUST follow these rules for every commit they author:
 6. `bootc/apps/<name>/rootfs/usr/share/nginx/conf.d/<name>.conf` — if web-facing (nginx vhost)
 7. `bootc/apps/<name>/rootfs/usr/lib/systemd/system/<name>-healthcheck.{service,timer}` — periodic health monitoring
 8. `bootc/apps/<name>/rootfs/etc/logrotate.d/<name>` — log rotation config
-9. Update `scripts/smoke-test.sh` — add binary check + unit enabled check
+9. Update `scripts/vm-test.sh` — add service-active check + endpoint probe
 10. Update Containerfile — add `systemctl enable <name>-healthcheck.timer` if adding timers
-11. `make build && make test-smoke` to verify
+11. `make build && make test-vm` to verify
 
 ### Adding a New Service (Middleware)
 
