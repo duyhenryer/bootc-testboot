@@ -18,7 +18,8 @@ RUN chmod 0440 /etc/sudoers.d/wheel-nopasswd
 
 # --- Enable base services ---
 # firewalld package stays installed but is NOT enabled — see Containerfile (root) for rationale.
-RUN systemctl enable cloud-init sshd chronyd systemd-resolved NetworkManager
+RUN systemctl enable cloud-init sshd chronyd systemd-resolved NetworkManager \
+    && systemctl mask systemd-time-wait-sync.service
 
 # --- Clean /var and /run artifacts from package install ---
 # /var/lib/.ssh-host-keys-migration is a %ghost file from openssh-server; the
