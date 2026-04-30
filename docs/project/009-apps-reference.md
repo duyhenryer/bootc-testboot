@@ -252,8 +252,8 @@ curl http://localhost:8001/status/rabbitmq
 curl http://localhost:8001/status/valkey
 curl -X POST http://localhost:8001/seed -d '{"count": 10}'
 
-# Project-wide smoke
-make test-smoke
+# Project-wide VM boot test
+make test-vm
 ```
 
 ### Troubleshooting

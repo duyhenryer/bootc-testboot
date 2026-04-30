@@ -1,4 +1,4 @@
-.PHONY: base apps build test lint test-smoke test-smoke-run test-integration \
+.PHONY: base apps build test test-all lint \
        test-vm test-vm-upgrade test-vm-ssh \
        audit audit-all manifest scan-image verify-ghcr help clean
 
@@ -84,23 +84,13 @@ lint: ## Run bootc container lint --fatal-warnings
 	$(PODMAN) run --rm $(APP_IMAGE_REF):$(VERSION) bootc container lint --fatal-warnings
 
 # ---------------------------------------------------------------------------
-# Local Testing (no cloud deploy needed)
-# ---------------------------------------------------------------------------
-
-test-smoke: build test-smoke-run ## Smoke test: build + verify image contents
-
-test-smoke-run: ## Smoke test only: expects image already built (CI uses this)
-	@./scripts/smoke-test.sh "$(PODMAN)" "$(APP_IMAGE_REF):$(VERSION)"
-
-test-integration: build ## Integration test: run app in read-only mode (simulates production)
-	@./scripts/integration-test.sh "$(PODMAN)" "$(APP_IMAGE_REF):$(VERSION)"
-
-# ---------------------------------------------------------------------------
 # VM Testing (requires bcvk + KVM)
 # ---------------------------------------------------------------------------
 
 test-vm: build ## VM test: boot as real VM, verify all services (requires bcvk + /dev/kvm)
 	@./scripts/vm-test.sh "$(APP_IMAGE_REF):$(VERSION)"
+
+test-all: test lint test-vm ## Run all tests: Go unit, bootc lint, and VM boot test
 
 test-vm-upgrade: build ## VM upgrade test: persistent VM + bootc upgrade + reboot (requires bcvk + libvirt)
 	@./scripts/vm-upgrade-test.sh "$(APP_IMAGE_REF):$(VERSION)"
@@ -113,7 +103,7 @@ test-vm-ssh: build ## Boot image as VM and SSH in (interactive, auto-cleanup on 
 # ---------------------------------------------------------------------------
 
 audit: manifest scan-image ## Local gate: manifest + Trivy (no build)
-	@echo "=== audit completed (see output/ for manifest). Also: make build && make test-smoke; make test ==="
+	@echo "=== audit completed (see output/ for manifest). Also: make test-all ==="
 
 audit-all: apps ## Build + strict-lint ALL base images and app image
 	@for d in $(ALL_DISTROS); do \
